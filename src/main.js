@@ -113,6 +113,7 @@ const gameState = {
   },
   selectedColonists: [],
   started: false,
+  lastRescueDay: 0,
   pan: { x: 0, y: 0 },
   exploration: {
     team: 2,
@@ -246,7 +247,7 @@ function createResources() {
       const x = Math.floor(Math.random() * MAP_SIZE);
       const y = Math.floor(Math.random() * MAP_SIZE);
       if (gameState.map[x][y].terrain !== "grass") continue;
-      nodes.push({ id: `${type}-${x}-${y}-${added}`, type, x, y, amount: 1 });
+      nodes.push({ id: `${type}-${x}-${y}-${added}`, type, x, y, amount: 1, regrow: 0 });
       added += 1;
     }
   };
@@ -260,30 +261,35 @@ const colonistRoster = [
   {
     id: "aira",
     name: "Айра",
+    role: "Инженер",
     traits: ["Трудолюбивая", "Спокойная"],
     modifiers: { workRate: 1.15, hungerRate: 1, restRate: 1 }
   },
   {
     id: "dan",
     name: "Дан",
+    role: "Разведчик",
     traits: ["Выносливый", "Упрямый"],
     modifiers: { workRate: 1, hungerRate: 0.9, restRate: 1.1 }
   },
   {
     id: "nika",
     name: "Ника",
+    role: "Собиратель",
     traits: ["Быстрая", "Нервная"],
     modifiers: { workRate: 1.05, hungerRate: 1.1, restRate: 0.95 }
   },
   {
     id: "sava",
     name: "Сава",
+    role: "Мастер",
     traits: ["Мастер", "Неаккуратный"],
     modifiers: { workRate: 1.2, hungerRate: 1.05, restRate: 0.9 }
   },
   {
     id: "lira",
     name: "Лира",
+    role: "Повар",
     traits: ["Кулинар", "Домосед"],
     modifiers: { workRate: 0.95, hungerRate: 0.85, restRate: 1.05 }
   }
@@ -303,6 +309,7 @@ function createColonist(data, x, y) {
   return {
     id: crypto.randomUUID(),
     name: data.name,
+    role: data.role,
     traits: data.traits,
     modifiers: data.modifiers,
     x,
@@ -494,7 +501,8 @@ function handleTask(colonist, delta) {
       }
       node.amount -= 1;
       const gains = resourceValues[node.type];
-      const [type, amount] = Object.entries(gains)[0];
+      const [type, baseAmount] = Object.entries(gains)[0];
+      const amount = Math.max(1, Math.round(baseAmount * colonist.modifiers.workRate));
       colonist.carry = { type, amount };
       colonist.task = "haul";
       const dropoff = getDropoffTarget(colonist);
@@ -591,6 +599,47 @@ function updateStructures(delta) {
         pushEvent("Колодец дал воду (+2).");
       }
     }
+    if (structure.type === "lumberyard") {
+      structure.timer = (structure.timer ?? 0) + delta;
+      if (structure.timer >= 22) {
+        structure.timer = 0;
+        gameState.resources.wood += 3;
+        pushEvent("Лесопилка произвела дерево (+3).");
+      }
+    }
+    if (structure.type === "quarry") {
+      structure.timer = (structure.timer ?? 0) + delta;
+      if (structure.timer >= 26) {
+        structure.timer = 0;
+        gameState.resources.stone += 3;
+        pushEvent("Карьер дал камень (+3).");
+      }
+    }
+  }
+}
+
+function updateResources(delta) {
+  for (const node of gameState.nodes) {
+    if (node.amount > 0) continue;
+    const regrowTime = node.type === "berries" ? 20 : 35;
+    node.regrow += delta;
+    if (node.regrow >= regrowTime) {
+      node.amount = 1;
+      node.regrow = 0;
+    }
+  }
+}
+
+function checkRescueEvent() {
+  const lowFood = gameState.resources.food <= 4;
+  const lowWood = gameState.resources.wood <= 4;
+  const lowWater = gameState.resources.water <= 2;
+  if ((lowFood || lowWood || lowWater) && gameState.day >= gameState.lastRescueDay + 3) {
+    gameState.lastRescueDay = gameState.day;
+    gameState.resources.food += 6;
+    gameState.resources.wood += 4;
+    gameState.resources.water += 3;
+    pushEvent("Спасатели оставили припасы. Это ваш шанс восстановиться.");
   }
 }
 
@@ -605,7 +654,9 @@ function update(delta) {
     updateStory();
   }
   tickEvents();
+  updateResources(delta);
   updateStructures(delta * workBoost);
+  checkRescueEvent();
 
   for (const colonist of gameState.colonists) {
     updateNeeds(colonist, delta);
@@ -693,6 +744,8 @@ function drawStructure(structure) {
     workshop: "#c96f5a",
     farm: "#6fbf73",
     well: "#5fa7c9",
+    lumberyard: "#8b6b4a",
+    quarry: "#707070",
     watch: "#8a7bd1",
     beacon: "#f0b35d"
   };
@@ -734,6 +787,20 @@ function drawStructure(structure) {
     ctx.beginPath();
     ctx.arc(screenX + 16, screenY + 6, 4, 0, Math.PI * 2);
     ctx.fill();
+  }
+  if (structure.type === "lumberyard") {
+    ctx.strokeStyle = "rgba(130, 90, 60, 0.8)";
+    ctx.beginPath();
+    ctx.moveTo(screenX + 8, screenY + 22);
+    ctx.lineTo(screenX + 24, screenY + 22);
+    ctx.stroke();
+  }
+  if (structure.type === "quarry") {
+    ctx.strokeStyle = "rgba(170, 170, 170, 0.8)";
+    ctx.beginPath();
+    ctx.moveTo(screenX + 10, screenY + 12);
+    ctx.lineTo(screenX + 22, screenY + 20);
+    ctx.stroke();
   }
 }
 
@@ -817,7 +884,7 @@ function updateHud() {
   colonistsList.innerHTML = gameState.colonists
     .map(
       (colonist) =>
-        `<li>${colonist.name} — ${colonist.task} · голод ${colonist.hunger.toFixed(0)} · отдых ${colonist.rest.toFixed(0)} · настроение ${colonist.mood.toFixed(0)}</li>`
+        `<li>${colonist.name} (${colonist.role}) — ${colonist.task} · голод ${colonist.hunger.toFixed(0)} · отдых ${colonist.rest.toFixed(0)} · настроение ${colonist.mood.toFixed(0)}</li>`
     )
     .join("");
   eventsList.innerHTML = gameState.events.map((event) => `<li>${event.message}</li>`).join("");
@@ -878,6 +945,8 @@ function handleBuildClick(tile) {
     workshop: { label: "мастерская", cost: { wood: 8, stone: 6 }, work: 8 },
     farm: { label: "ферма", cost: { wood: 6, food: 4 }, work: 6 },
     well: { label: "колодец", cost: { wood: 8, stone: 4 }, work: 6 },
+    lumberyard: { label: "лесопилка", cost: { wood: 10, stone: 4 }, work: 7 },
+    quarry: { label: "карьер", cost: { wood: 8, stone: 10 }, work: 8 },
     beacon: { label: "маяк", cost: { wood: 10, stone: 10, tools: 2 }, work: 12 }
   };
   const definition = buildDefinitions[gameState.selectedBuild];
@@ -1045,6 +1114,7 @@ function updateTasks() {
       items: [
         "Следи, чтобы голод и отдых не падали ниже 30.",
         "Построй склад и ферму для стабильности.",
+        "Построй лесопилку или карьер для пассивной добычи.",
         "Открой новые биомы через экспедиции."
       ]
     },
@@ -1457,7 +1527,7 @@ document.addEventListener("keyup", (event) => {
 
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 canvas.addEventListener("mousedown", (event) => {
-  if (event.button === 2 || event.button === 1 || spaceDown) {
+  if (event.button === 2 || event.button === 1) {
     isPanning = true;
     panMoved = false;
     lastPan = { x: event.clientX, y: event.clientY };
