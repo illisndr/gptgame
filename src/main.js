@@ -26,9 +26,9 @@ const terrainPalette = {
 };
 
 const resourcePalette = {
-  tree: "#4d8f59",
-  berries: "#7d3b7b",
-  rock: "#7b7e84"
+  tree: { trunk: "#3f6d4a", crown: "#63b76d" },
+  berries: { bush: "#6f3c6d", berry: "#c060c8" },
+  rock: { base: "#7b7e84", highlight: "#9aa0a8" }
 };
 
 const resourceValues = {
@@ -36,6 +36,24 @@ const resourceValues = {
   berries: { food: 3 },
   rock: { stone: 4 }
 };
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function roundRect(x, y, width, height, radius) {
+    const r = Math.min(radius, width / 2, height / 2);
+    this.beginPath();
+    this.moveTo(x + r, y);
+    this.lineTo(x + width - r, y);
+    this.quadraticCurveTo(x + width, y, x + width, y + r);
+    this.lineTo(x + width, y + height - r);
+    this.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    this.lineTo(x + r, y + height);
+    this.quadraticCurveTo(x, y + height, x, y + height - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    this.closePath();
+    return this;
+  };
+}
 
 const gameState = {
   day: 1,
@@ -431,20 +449,63 @@ function update(delta) {
   }
 }
 
-function drawTile(x, y, color) {
+function drawTile(x, y, color, terrain) {
   const { x: screenX, y: screenY } = gridToScreen(x, y);
   ctx.fillStyle = color;
   ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
-  ctx.strokeStyle = "rgba(15, 20, 30, 0.3)";
+  ctx.strokeStyle = "rgba(12, 18, 28, 0.35)";
   ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+
+  if (terrain === "grass") {
+    ctx.strokeStyle = "rgba(120, 185, 120, 0.25)";
+    ctx.beginPath();
+    ctx.moveTo(screenX + 6, screenY + 10);
+    ctx.lineTo(screenX + 12, screenY + 6);
+    ctx.moveTo(screenX + 18, screenY + 20);
+    ctx.lineTo(screenX + 24, screenY + 14);
+    ctx.stroke();
+  }
+
+  if (terrain === "water") {
+    ctx.strokeStyle = "rgba(110, 180, 230, 0.45)";
+    ctx.beginPath();
+    ctx.arc(screenX + 10, screenY + 12, 6, 0, Math.PI * 2);
+    ctx.arc(screenX + 22, screenY + 20, 5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function drawResource(node) {
   const { x: screenX, y: screenY } = gridToScreen(node.x, node.y);
-  ctx.fillStyle = resourcePalette[node.type];
-  ctx.beginPath();
-  ctx.arc(screenX + TILE_SIZE / 2, screenY + TILE_SIZE / 2, 9, 0, Math.PI * 2);
-  ctx.fill();
+  if (node.type === "tree") {
+    ctx.fillStyle = resourcePalette.tree.trunk;
+    ctx.fillRect(screenX + 14, screenY + 14, 4, 10);
+    ctx.fillStyle = resourcePalette.tree.crown;
+    ctx.beginPath();
+    ctx.arc(screenX + 16, screenY + 10, 10, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (node.type === "berries") {
+    ctx.fillStyle = resourcePalette.berries.bush;
+    ctx.beginPath();
+    ctx.arc(screenX + 16, screenY + 18, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = resourcePalette.berries.berry;
+    ctx.beginPath();
+    ctx.arc(screenX + 12, screenY + 14, 2, 0, Math.PI * 2);
+    ctx.arc(screenX + 20, screenY + 20, 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (node.type === "rock") {
+    ctx.fillStyle = resourcePalette.rock.base;
+    ctx.beginPath();
+    ctx.moveTo(screenX + 8, screenY + 22);
+    ctx.lineTo(screenX + 20, screenY + 22);
+    ctx.lineTo(screenX + 26, screenY + 14);
+    ctx.lineTo(screenX + 14, screenY + 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = resourcePalette.rock.highlight;
+    ctx.fillRect(screenX + 16, screenY + 14, 6, 4);
+  }
 }
 
 function drawStructure(structure) {
@@ -456,8 +517,31 @@ function drawStructure(structure) {
     farm: "#6fbf73",
     watch: "#8a7bd1"
   };
-  ctx.fillStyle = palette[structure.type] ?? "#d1a94b";
-  ctx.fillRect(screenX + 6, screenY + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+  const base = palette[structure.type] ?? "#d1a94b";
+  ctx.fillStyle = base;
+  ctx.fillRect(screenX + 5, screenY + 8, TILE_SIZE - 10, TILE_SIZE - 12);
+
+  ctx.fillStyle = "rgba(10, 14, 20, 0.25)";
+  ctx.fillRect(screenX + 7, screenY + 20, TILE_SIZE - 14, 4);
+
+  if (structure.type === "camp") {
+    ctx.fillStyle = "#f2f1e6";
+    ctx.beginPath();
+    ctx.moveTo(screenX + 16, screenY + 6);
+    ctx.lineTo(screenX + 26, screenY + 16);
+    ctx.lineTo(screenX + 6, screenY + 16);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (structure.type === "farm") {
+    ctx.strokeStyle = "rgba(90, 140, 90, 0.8)";
+    ctx.beginPath();
+    ctx.moveTo(screenX + 8, screenY + 12);
+    ctx.lineTo(screenX + 24, screenY + 12);
+    ctx.moveTo(screenX + 8, screenY + 18);
+    ctx.lineTo(screenX + 24, screenY + 18);
+    ctx.stroke();
+  }
 }
 
 function drawColonist(colonist) {
@@ -465,12 +549,28 @@ function drawColonist(colonist) {
   if (colonist.id === gameState.selectedColonistId) {
     ctx.strokeStyle = "#f2c14e";
     ctx.lineWidth = 2;
-    ctx.strokeRect(screenX + 2, screenY + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+    ctx.strokeRect(screenX + 1, screenY + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   }
-  ctx.fillStyle = "#f2c14e";
+
+  ctx.fillStyle = "#2f3e58";
   ctx.beginPath();
-  ctx.arc(screenX + TILE_SIZE / 2, screenY + TILE_SIZE / 2, 7, 0, Math.PI * 2);
+  ctx.roundRect(screenX + 10, screenY + 16, 12, 12, 3);
   ctx.fill();
+
+  ctx.fillStyle = "#f6d3b3";
+  ctx.beginPath();
+  ctx.arc(screenX + 16, screenY + 12, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#5f7fb0";
+  ctx.beginPath();
+  ctx.moveTo(screenX + 10, screenY + 20);
+  ctx.lineTo(screenX + 22, screenY + 20);
+  ctx.lineTo(screenX + 24, screenY + 28);
+  ctx.lineTo(screenX + 8, screenY + 28);
+  ctx.closePath();
+  ctx.fill();
+
   ctx.fillStyle = "#1c1f2a";
   ctx.font = "10px Segoe UI";
   ctx.fillText(colonist.name, screenX - 2, screenY - 2);
@@ -494,7 +594,7 @@ function render() {
   for (let x = 0; x < MAP_SIZE; x += 1) {
     for (let y = 0; y < MAP_SIZE; y += 1) {
       const tile = gameState.map[x][y];
-      drawTile(x, y, terrainPalette[tile.terrain]);
+      drawTile(x, y, terrainPalette[tile.terrain], tile.terrain);
     }
   }
 
