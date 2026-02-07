@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPT Colony</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>GPT Colony</h1>
+        <div class="hud" id="hud"></div>
+      </header>
+      <main>
+        <canvas id="game" width="1200" height="720"></canvas>
+        <aside class="panel">
+          <h2>Управление</h2>
+          <p>Кликните по карте, чтобы поставить маркер сборки.</p>
+          <button id="toggle-pause">Пауза</button>
+          <button id="speed">Скорость: x1</button>
+          <section>
+            <h3>Ресурсы</h3>
+            <ul id="resources"></ul>
+          </section>
+          <section>
+            <h3>Колонисты</h3>
+            <ul id="colonists"></ul>
+          </section>
+          <section>
+            <h3>События</h3>
+            <ul id="events"></ul>
+          </section>
+        </aside>
+      </main>
+      <footer>
+        <p>Первая версия: базовая экономика, нужды и события.</p>
+      </footer>
+    </div>
+    <script src="/src/main.js"></script>
+  </body>
+</html>
