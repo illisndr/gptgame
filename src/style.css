@@ -291,6 +291,47 @@ footer {
   gap: 16px;
 }
 
+.modal-wide {
+  width: min(720px, 92vw);
+}
+
+.colonist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.colonist-card {
+  background: #0f1626;
+  border: 1px solid #2b3244;
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.colonist-card:hover {
+  transform: translateY(-2px);
+  border-color: #22d3ee;
+}
+
+.colonist-card.active {
+  border-color: #facc15;
+  box-shadow: 0 0 0 1px #facc15 inset;
+}
+
+.colonist-traits {
+  list-style: none;
+  margin: 0;
+  padding-left: 16px;
+  color: #c7d2e6;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
 .modal-card ol {
   margin: 0;
   padding-left: 18px;
