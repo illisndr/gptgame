@@ -16,6 +16,19 @@ const setupModal = document.getElementById("setup");
 const colonistGrid = document.getElementById("colonist-grid");
 const startCampaignButton = document.getElementById("start-campaign");
 const freePlayButton = document.getElementById("free-play");
+const biomeList = document.getElementById("biome-list");
+const biomeRisk = document.getElementById("biome-risk");
+const teamSizeLabel = document.getElementById("team-size");
+const foodPackLabel = document.getElementById("food-pack");
+const waterPackLabel = document.getElementById("water-pack");
+const toolsPackLabel = document.getElementById("tools-pack");
+const sendExpeditionButton = document.getElementById("send-expedition");
+const expeditionLog = document.getElementById("expedition-log");
+const choiceModal = document.getElementById("choice-modal");
+const choiceTitle = document.getElementById("choice-title");
+const choiceBody = document.getElementById("choice-body");
+const choiceAButton = document.getElementById("choice-a");
+const choiceBButton = document.getElementById("choice-b");
 
 const TILE_SIZE = 32;
 const MAP_SIZE = 28;
@@ -68,7 +81,8 @@ const gameState = {
     food: 16,
     wood: 20,
     stone: 6,
-    tools: 0
+    tools: 0,
+    water: 8
   },
   events: [],
   map: [],
@@ -87,8 +101,26 @@ const gameState = {
     beaconBuilt: false,
     daysAfterBeacon: 0
   },
+  storyFlags: {
+    path: null,
+    archiveExposed: false,
+    caravanRobbed: false,
+    toxinUsed: false,
+    survivorsAccepted: false,
+    swampHint: false,
+    wastelandHint: false,
+    mountainHint: false
+  },
   selectedColonists: [],
-  started: false
+  started: false,
+  pan: { x: 0, y: 0 },
+  exploration: {
+    team: 2,
+    packs: { food: 4, water: 3, tools: 1 },
+    selectedBiome: "forest",
+    log: []
+  },
+  choice: null
 };
 
 const camera = {
@@ -97,6 +129,57 @@ const camera = {
   viewWidth: 0,
   viewHeight: 0
 };
+
+const BIOMES = [
+  {
+    id: "forest",
+    name: "Лес",
+    risk: 0.25,
+    resources: { wood: [4, 10], food: [2, 5], herbs: [0, 2] },
+    threats: ["Хищники", "Клещи"],
+    hidden: ["Следы охотников"],
+    rare: ["Семена древних деревьев"]
+  },
+  {
+    id: "swamp",
+    name: "Болото",
+    risk: 0.45,
+    resources: { reagents: [1, 3], water: [2, 4] },
+    threats: ["Болезни", "Токсичные испарения"],
+    hidden: ["Контейнер с данными"],
+    rare: ["Стабилизатор воды"],
+    unlockFlag: "swampHint"
+  },
+  {
+    id: "wasteland",
+    name: "Пустошь",
+    risk: 0.5,
+    resources: { scrap: [2, 6], battery: [0, 2] },
+    threats: ["Радиация", "Мародёры"],
+    hidden: ["Следы каравана"],
+    rare: ["Силовой модуль"],
+    unlockFlag: "wastelandHint"
+  },
+  {
+    id: "ruins",
+    name: "Руины",
+    risk: 0.4,
+    resources: { tech: [1, 4], stone: [1, 3] },
+    threats: ["Дроны", "Обрушения"],
+    hidden: ["Архив катастрофы"],
+    rare: ["Чертёж маяка v2"]
+  },
+  {
+    id: "mountains",
+    name: "Горы",
+    risk: 0.55,
+    resources: { stone: [3, 8], crystal: [0, 1] },
+    threats: ["Лавины", "Холод"],
+    hidden: ["Пещера выживших"],
+    rare: ["Кристалл связи"],
+    unlockFlag: "mountainHint"
+  }
+];
 
 function gridToScreen(x, y) {
   return {
@@ -120,8 +203,8 @@ function getWorldSize() {
 function updateCamera() {
   const worldSize = getWorldSize();
   const zoom = gameState.zoom;
-  camera.offsetX = (camera.viewWidth / zoom - worldSize) / 2;
-  camera.offsetY = (camera.viewHeight / zoom - worldSize) / 2;
+  camera.offsetX = (camera.viewWidth / zoom - worldSize) / 2 + gameState.pan.x;
+  camera.offsetY = (camera.viewHeight / zoom - worldSize) / 2 + gameState.pan.y;
 }
 
 function resizeCanvas() {
@@ -477,7 +560,14 @@ function updateStory() {
   if (gameState.story.beaconBuilt) {
     gameState.story.daysAfterBeacon += 1;
     if (gameState.story.daysAfterBeacon >= 3) {
-      pushEvent("Экспедиция спасена. Вы победили!");
+      const path = gameState.storyFlags.path ?? "neutral";
+      const ending =
+        path === "humanity"
+          ? "Спасение гуманистов: союзники откликнулись и колония спасена."
+          : path === "military"
+            ? "Военный финал: сигнал привлёк конфликт, но колония устояла."
+            : "Технократическая изоляция: вы выжили, но без внешнего контакта.";
+      pushEvent(ending);
       gameState.paused = true;
     }
   }
@@ -491,6 +581,14 @@ function updateStructures(delta) {
         structure.timer = 0;
         gameState.resources.food += 2;
         pushEvent("Ферма дала урожай (+2 еды).");
+      }
+    }
+    if (structure.type === "well") {
+      structure.timer = (structure.timer ?? 0) + delta;
+      if (structure.timer >= 18) {
+        structure.timer = 0;
+        gameState.resources.water += 2;
+        pushEvent("Колодец дал воду (+2).");
       }
     }
   }
@@ -594,7 +692,9 @@ function drawStructure(structure) {
     stockpile: "#88b2b8",
     workshop: "#c96f5a",
     farm: "#6fbf73",
-    watch: "#8a7bd1"
+    well: "#5fa7c9",
+    watch: "#8a7bd1",
+    beacon: "#f0b35d"
   };
   const base = palette[structure.type] ?? "#d1a94b";
   ctx.fillStyle = base;
@@ -620,6 +720,20 @@ function drawStructure(structure) {
     ctx.moveTo(screenX + 8, screenY + 18);
     ctx.lineTo(screenX + 24, screenY + 18);
     ctx.stroke();
+  }
+  if (structure.type === "well") {
+    ctx.strokeStyle = "rgba(210, 230, 245, 0.8)";
+    ctx.beginPath();
+    ctx.arc(screenX + 16, screenY + 16, 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (structure.type === "beacon") {
+    ctx.fillStyle = "#f0f0f0";
+    ctx.fillRect(screenX + 14, screenY + 6, 4, 14);
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath();
+    ctx.arc(screenX + 16, screenY + 6, 4, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -716,11 +830,21 @@ function init() {
   gameState.structures = [{ type: "camp", x: 14, y: 14 }];
   gameState.buildOrders = [];
   gameState.events = [];
-  gameState.resources = { food: 16, wood: 20, stone: 6, tools: 0 };
+  gameState.resources = { food: 16, wood: 20, stone: 6, tools: 0, water: 8 };
   gameState.time = 0;
   gameState.day = 1;
   gameState.selectedColonistId = null;
   gameState.story = { chapter: 1, beaconBuilt: false, daysAfterBeacon: 0 };
+  gameState.storyFlags = {
+    path: null,
+    archiveExposed: false,
+    caravanRobbed: false,
+    toxinUsed: false,
+    survivorsAccepted: false,
+    swampHint: false,
+    wastelandHint: false,
+    mountainHint: false
+  };
   gameState.started = true;
   pushEvent("Колония высадилась. Удачи!");
   updateTasks();
@@ -753,6 +877,7 @@ function handleBuildClick(tile) {
     stockpile: { label: "склад", cost: { wood: 12 }, work: 7 },
     workshop: { label: "мастерская", cost: { wood: 8, stone: 6 }, work: 8 },
     farm: { label: "ферма", cost: { wood: 6, food: 4 }, work: 6 },
+    well: { label: "колодец", cost: { wood: 8, stone: 4 }, work: 6 },
     beacon: { label: "маяк", cost: { wood: 10, stone: 10, tools: 2 }, work: 12 }
   };
   const definition = buildDefinitions[gameState.selectedBuild];
@@ -815,6 +940,7 @@ function handleCommandClick(tile) {
 }
 
 canvas.addEventListener("click", (event) => {
+  if (panMoved) return;
   const position = getMousePosition(event);
   const tile = screenToGrid(position.x, position.y);
   if (tile.x < 0 || tile.y < 0 || tile.x >= MAP_SIZE || tile.y >= MAP_SIZE) return;
@@ -913,7 +1039,8 @@ function updateTasks() {
       title: "Стабилизировать быт",
       items: [
         "Следи, чтобы голод и отдых не падали ниже 30.",
-        "Построй склад и ферму для стабильности."
+        "Построй склад и ферму для стабильности.",
+        "Открой новые биомы через экспедиции."
       ]
     },
     {
@@ -939,6 +1066,285 @@ function updateTasks() {
         `<li><strong>${task.title}</strong><ul>${task.items.map((item) => `<li>${item}</li>`).join("")}</ul></li>`
     )
     .join("");
+}
+
+function getBiomeById(id) {
+  return BIOMES.find((biome) => biome.id === id);
+}
+
+function isBiomeUnlocked(biome) {
+  if (!biome.unlockFlag) return true;
+  return gameState.storyFlags[biome.unlockFlag];
+}
+
+function renderBiomes() {
+  biomeList.innerHTML = BIOMES.map((biome) => {
+    const unlocked = isBiomeUnlocked(biome);
+    const active = gameState.exploration.selectedBiome === biome.id;
+    const classes = ["biome-item"];
+    if (!unlocked) classes.push("locked");
+    if (active) classes.push("active");
+    return `<div class="${classes.join(" ")}" data-biome="${biome.id}">
+      <span>${biome.name}</span>
+      <small>${unlocked ? "доступен" : "закрыт"}</small>
+    </div>`;
+  }).join("");
+
+  biomeList.querySelectorAll(".biome-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const biome = getBiomeById(item.dataset.biome);
+      if (!biome || !isBiomeUnlocked(biome)) return;
+      gameState.exploration.selectedBiome = biome.id;
+      renderBiomes();
+      updateBiomeRisk();
+    });
+  });
+}
+
+function updateBiomeRisk() {
+  const biome = getBiomeById(gameState.exploration.selectedBiome);
+  if (!biome) {
+    biomeRisk.textContent = "Риск: —";
+    return;
+  }
+  const prep = gameState.exploration.packs;
+  const prepScore = (prep.food + prep.water + prep.tools * 2) / 10;
+  const risk = Math.max(0.1, biome.risk - prepScore * 0.2);
+  const label = risk < 0.25 ? "низкий" : risk < 0.45 ? "средний" : "высокий";
+  biomeRisk.textContent = `Риск: ${label}`;
+}
+
+function updateExpeditionPrepUI() {
+  teamSizeLabel.textContent = String(gameState.exploration.team);
+  foodPackLabel.textContent = String(gameState.exploration.packs.food);
+  waterPackLabel.textContent = String(gameState.exploration.packs.water);
+  toolsPackLabel.textContent = String(gameState.exploration.packs.tools);
+  updateBiomeRisk();
+}
+
+function logExpedition(message) {
+  gameState.exploration.log.unshift(message);
+  if (gameState.exploration.log.length > 6) {
+    gameState.exploration.log.pop();
+  }
+  expeditionLog.innerHTML = gameState.exploration.log.map((entry) => `<li>${entry}</li>`).join("");
+}
+
+function triggerChoice(choice) {
+  gameState.choice = choice;
+  choiceTitle.textContent = choice.title;
+  choiceBody.textContent = choice.body;
+  choiceAButton.textContent = choice.options[0].label;
+  choiceBButton.textContent = choice.options[1].label;
+  choiceModal.classList.add("show");
+  gameState.paused = true;
+  togglePauseButton.textContent = "Продолжить";
+}
+
+function resolveChoice(index) {
+  if (!gameState.choice) return;
+  const option = gameState.choice.options[index];
+  if (option?.apply) option.apply();
+  gameState.choice = null;
+  choiceModal.classList.remove("show");
+  gameState.paused = false;
+  togglePauseButton.textContent = "Пауза";
+}
+
+function maybeTriggerStoryChoice(biomeId) {
+  if (biomeId === "ruins" && !gameState.storyFlags.archiveExposed) {
+    triggerChoice({
+      title: "Архив катастрофы",
+      body: "Нашли архив. Раскрыть правду колонистам или скрыть?",
+      options: [
+        {
+          label: "Раскрыть правду",
+          apply: () => {
+            gameState.storyFlags.archiveExposed = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "humanity";
+            pushEvent("Правда раскрыта. Мораль выросла, но страх остался.");
+            gameState.colonists.forEach((col) => (col.mood = Math.min(100, col.mood + 5)));
+          }
+        },
+        {
+          label: "Скрыть архив",
+          apply: () => {
+            gameState.storyFlags.archiveExposed = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "tech";
+            pushEvent("Архив скрыт. Порядок сохранён, доверие упало.");
+            gameState.colonists.forEach((col) => (col.mood = Math.max(10, col.mood - 6)));
+          }
+        }
+      ]
+    });
+  }
+  if (biomeId === "wasteland" && !gameState.storyFlags.caravanRobbed) {
+    triggerChoice({
+      title: "Караван в пустоши",
+      body: "Обнаружен караван. Торговать или ограбить?",
+      options: [
+        {
+          label: "Торговать",
+          apply: () => {
+            gameState.storyFlags.caravanRobbed = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "humanity";
+            gameState.resources.food += 4;
+            gameState.resources.tools += 1;
+            pushEvent("Обмен успешен. Репутация растёт.");
+          }
+        },
+        {
+          label: "Ограбить",
+          apply: () => {
+            gameState.storyFlags.caravanRobbed = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "military";
+            gameState.resources.food += 6;
+            gameState.resources.stone += 4;
+            pushEvent("Караван ограблен. Слухи могут вернуться.");
+          }
+        }
+      ]
+    });
+  }
+  if (biomeId === "swamp" && !gameState.storyFlags.toxinUsed) {
+    triggerChoice({
+      title: "Болотные токсины",
+      body: "Есть шанс использовать токсины для обороны. Очистить или применить?",
+      options: [
+        {
+          label: "Очистить",
+          apply: () => {
+            gameState.storyFlags.toxinUsed = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "humanity";
+            gameState.resources.water += 3;
+            pushEvent("Токсины очищены. Воды стало больше.");
+          }
+        },
+        {
+          label: "Использовать",
+          apply: () => {
+            gameState.storyFlags.toxinUsed = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "military";
+            gameState.resources.tools += 1;
+            pushEvent("Токсины использованы. Оборона усилена, но риск растёт.");
+          }
+        }
+      ]
+    });
+  }
+  if (biomeId === "mountains" && !gameState.storyFlags.survivorsAccepted) {
+    triggerChoice({
+      title: "Выжившие в горах",
+      body: "Обнаружена группа выживших. Принять или отказать?",
+      options: [
+        {
+          label: "Принять",
+          apply: () => {
+            gameState.storyFlags.survivorsAccepted = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "humanity";
+            pushEvent("Выжившие приняты. Потребление ресурсов увеличится.");
+            gameState.resources.food = Math.max(0, gameState.resources.food - 4);
+          }
+        },
+        {
+          label: "Отказать",
+          apply: () => {
+            gameState.storyFlags.survivorsAccepted = true;
+            gameState.storyFlags.path = gameState.storyFlags.path ?? "tech";
+            pushEvent("Вы отказали. Колония сохранила ресурсы, но мораль упала.");
+            gameState.colonists.forEach((col) => (col.mood = Math.max(10, col.mood - 5)));
+          }
+        }
+      ]
+    });
+  }
+}
+
+function resolveExpedition() {
+  const biome = getBiomeById(gameState.exploration.selectedBiome);
+  if (!biome) return;
+  const { team, packs } = gameState.exploration;
+  if (team < 1 || team > 3) return;
+  if (
+    gameState.resources.food < packs.food ||
+    gameState.resources.water < packs.water ||
+    gameState.resources.tools < packs.tools
+  ) {
+    pushEvent("Недостаточно ресурсов для экспедиции.");
+    return;
+  }
+  if (gameState.colonists.length < team) {
+    pushEvent("Недостаточно колонистов.");
+    return;
+  }
+  gameState.resources.food -= packs.food;
+  gameState.resources.water -= packs.water;
+  gameState.resources.tools -= packs.tools;
+
+  const prepScore = (packs.food + packs.water + packs.tools * 2 + team) / 10;
+  const successChance = Math.min(0.85, Math.max(0.2, 0.6 - biome.risk + prepScore * 0.2));
+  const roll = Math.random();
+  const outcome = roll < successChance ? "success" : roll < successChance + 0.2 ? "partial" : "fail";
+
+  const loot = {};
+  const addLoot = (type, min, max) => {
+    const amount = Math.floor(min + Math.random() * (max - min + 1));
+    loot[type] = (loot[type] ?? 0) + amount;
+  };
+
+  if (outcome !== "fail") {
+    if (biome.resources.wood) addLoot("wood", ...biome.resources.wood);
+    if (biome.resources.food) addLoot("food", ...biome.resources.food);
+    if (biome.resources.stone) addLoot("stone", ...biome.resources.stone);
+    if (biome.resources.water) addLoot("water", ...biome.resources.water);
+  }
+
+  if (outcome === "success" && Math.random() < 0.25) {
+    addLoot("tools", 1, 2);
+    logExpedition(`Редкая находка: ${biome.rare[Math.floor(Math.random() * biome.rare.length)]}.`);
+  }
+
+  if (Math.random() < 0.35) {
+    logExpedition(`Скрытое событие: ${biome.hidden[Math.floor(Math.random() * biome.hidden.length)]}.`);
+  }
+
+  if (outcome === "partial") {
+    gameState.colonists.slice(0, team).forEach((col) => {
+      col.mood = Math.max(10, col.mood - 4);
+      col.rest = Math.max(0, col.rest - 10);
+    });
+  }
+  if (outcome === "fail") {
+    gameState.colonists.slice(0, team).forEach((col) => {
+      col.mood = Math.max(10, col.mood - 8);
+      col.rest = Math.max(0, col.rest - 20);
+    });
+  }
+
+  Object.entries(loot).forEach(([resource, amount]) => {
+    gameState.resources[resource] = (gameState.resources[resource] ?? 0) + amount;
+  });
+
+  logExpedition(
+    `Экспедиция в ${biome.name}: ${outcome === "success" ? "успех" : outcome === "partial" ? "частично" : "провал"}.`
+  );
+
+  if (!gameState.storyFlags.swampHint && biome.id === "forest") {
+    gameState.storyFlags.swampHint = true;
+    logExpedition("Открыт биом: Болото.");
+  }
+  if (!gameState.storyFlags.wastelandHint && biome.id === "ruins") {
+    gameState.storyFlags.wastelandHint = true;
+    logExpedition("Открыт биом: Пустошь.");
+  }
+  if (!gameState.storyFlags.mountainHint && biome.id === "wasteland") {
+    gameState.storyFlags.mountainHint = true;
+    logExpedition("Открыт биом: Горы.");
+  }
+
+  renderBiomes();
+  updateBiomeRisk();
+  maybeTriggerStoryChoice(biome.id);
 }
 
 function updateOrders() {
@@ -1013,13 +1419,71 @@ function startGame(storyMode) {
 }
 
 window.addEventListener("resize", resizeCanvas);
+let isPanning = false;
+let lastPan = { x: 0, y: 0 };
+let spaceDown = false;
+let panMoved = false;
+
 document.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
     event.preventDefault();
+    spaceDown = true;
     gameState.paused = !gameState.paused;
     togglePauseButton.textContent = gameState.paused ? "Продолжить" : "Пауза";
   }
 });
+
+document.addEventListener("keyup", (event) => {
+  if (event.code === "Space") {
+    spaceDown = false;
+  }
+});
+
+canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+canvas.addEventListener("mousedown", (event) => {
+  if (event.button === 2 || event.button === 1 || spaceDown) {
+    isPanning = true;
+    panMoved = false;
+    lastPan = { x: event.clientX, y: event.clientY };
+  }
+});
+
+window.addEventListener("mouseup", () => {
+  isPanning = false;
+  if (panMoved) {
+    panMoved = false;
+  }
+});
+
+window.addEventListener("mousemove", (event) => {
+  if (!isPanning) return;
+  const dx = (event.clientX - lastPan.x) / gameState.zoom;
+  const dy = (event.clientY - lastPan.y) / gameState.zoom;
+  lastPan = { x: event.clientX, y: event.clientY };
+  gameState.pan.x += dx;
+  gameState.pan.y += dy;
+  panMoved = true;
+  updateCamera();
+});
+
+choiceAButton.addEventListener("click", () => resolveChoice(0));
+choiceBButton.addEventListener("click", () => resolveChoice(1));
+
+document.querySelectorAll("[data-step]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const step = button.dataset.step;
+    const dir = Number(button.dataset.dir);
+    if (step === "team") {
+      gameState.exploration.team = Math.min(3, Math.max(1, gameState.exploration.team + dir));
+    } else {
+      const value = gameState.exploration.packs[step];
+      gameState.exploration.packs[step] = Math.max(0, value + dir);
+    }
+    updateExpeditionPrepUI();
+  });
+});
+
+sendExpeditionButton.addEventListener("click", () => resolveExpedition());
 
 function renderLoop() {
   if (gameState.started) {
@@ -1039,5 +1503,7 @@ updateZoomLabel();
 setupTutorial();
 renderLoop();
 renderColonistSelection();
+renderBiomes();
+updateExpeditionPrepUI();
 startCampaignButton.addEventListener("click", () => startGame(true));
 freePlayButton.addEventListener("click", () => startGame(false));
