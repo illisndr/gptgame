@@ -12,6 +12,10 @@ const zoomLevelLabel = document.getElementById("zoom-level");
 const tutorialModal = document.getElementById("tutorial");
 const startNewButton = document.getElementById("start-new");
 const continueButton = document.getElementById("continue");
+const setupModal = document.getElementById("setup");
+const colonistGrid = document.getElementById("colonist-grid");
+const startCampaignButton = document.getElementById("start-campaign");
+const freePlayButton = document.getElementById("free-play");
 
 const TILE_SIZE = 32;
 const MAP_SIZE = 28;
@@ -76,7 +80,14 @@ const gameState = {
   selectedBuild: "camp",
   selectedColonistId: null,
   commandMode: "move",
-  zoom: 1
+  zoom: 1,
+  storyMode: true,
+  story: {
+    chapter: 1,
+    beaconBuilt: false,
+    daysAfterBeacon: 0
+  },
+  selectedColonists: []
 };
 
 const camera = {
@@ -136,7 +147,7 @@ function createMap() {
       } else if (rand > 0.9) {
         terrain = "rock";
       }
-      column.push({ terrain });
+      column.push({ terrain, detail: Math.random() });
     }
     map.push(column);
   }
@@ -161,18 +172,55 @@ function createResources() {
   return nodes;
 }
 
+const colonistRoster = [
+  {
+    id: "aira",
+    name: "Айра",
+    traits: ["Трудолюбивая", "Спокойная"],
+    modifiers: { workRate: 1.15, hungerRate: 1, restRate: 1 }
+  },
+  {
+    id: "dan",
+    name: "Дан",
+    traits: ["Выносливый", "Упрямый"],
+    modifiers: { workRate: 1, hungerRate: 0.9, restRate: 1.1 }
+  },
+  {
+    id: "nika",
+    name: "Ника",
+    traits: ["Быстрая", "Нервная"],
+    modifiers: { workRate: 1.05, hungerRate: 1.1, restRate: 0.95 }
+  },
+  {
+    id: "sava",
+    name: "Сава",
+    traits: ["Мастер", "Неаккуратный"],
+    modifiers: { workRate: 1.2, hungerRate: 1.05, restRate: 0.9 }
+  },
+  {
+    id: "lira",
+    name: "Лира",
+    traits: ["Кулинар", "Домосед"],
+    modifiers: { workRate: 0.95, hungerRate: 0.85, restRate: 1.05 }
+  }
+];
+
 function createColonists() {
-  return [
-    createColonist("Айра", 9, 9),
-    createColonist("Дан", 10, 12),
-    createColonist("Ника", 13, 10)
+  const base = [
+    { x: 9, y: 9 },
+    { x: 10, y: 12 },
+    { x: 13, y: 10 }
   ];
+  const selection = gameState.selectedColonists.length > 0 ? gameState.selectedColonists : colonistRoster.slice(0, 3);
+  return selection.map((data, index) => createColonist(data, base[index].x, base[index].y));
 }
 
-function createColonist(name, x, y) {
+function createColonist(data, x, y) {
   return {
     id: crypto.randomUUID(),
-    name,
+    name: data.name,
+    traits: data.traits,
+    modifiers: data.modifiers,
     x,
     y,
     goal: null,
@@ -239,8 +287,8 @@ function moveTowards(colonist, targetX, targetY) {
 }
 
 function updateNeeds(colonist, delta) {
-  colonist.hunger = Math.max(0, colonist.hunger - 0.7 * delta);
-  colonist.rest = Math.max(0, colonist.rest - 0.5 * delta);
+  colonist.hunger = Math.max(0, colonist.hunger - 0.7 * delta * colonist.modifiers.hungerRate);
+  colonist.rest = Math.max(0, colonist.rest - 0.5 * delta / colonist.modifiers.restRate);
   if (colonist.hunger < 20 || colonist.rest < 20) {
     colonist.mood = Math.max(10, colonist.mood - 0.4 * delta);
   } else {
@@ -415,6 +463,25 @@ function tickEvents() {
   }
 }
 
+function updateStory() {
+  if (!gameState.storyMode) return;
+  if (!gameState.story.beaconBuilt) {
+    const beacon = gameState.structures.find((structure) => structure.type === "beacon");
+    if (beacon) {
+      gameState.story.beaconBuilt = true;
+      gameState.story.chapter = 3;
+      pushEvent("Маяк включён. Сигнал принят. Держитесь ещё 3 дня.");
+    }
+  }
+  if (gameState.story.beaconBuilt) {
+    gameState.story.daysAfterBeacon += 1;
+    if (gameState.story.daysAfterBeacon >= 3) {
+      pushEvent("Экспедиция спасена. Вы победили!");
+      gameState.paused = true;
+    }
+  }
+}
+
 function updateStructures(delta) {
   for (const structure of gameState.structures) {
     if (structure.type === "farm") {
@@ -436,6 +503,7 @@ function update(delta) {
     gameState.day += 1;
     gameState.time = 0;
     pushEvent(`Начался день ${gameState.day}.`);
+    updateStory();
   }
   tickEvents();
   updateStructures(delta * workBoost);
@@ -451,7 +519,12 @@ function update(delta) {
 
 function drawTile(x, y, color, terrain) {
   const { x: screenX, y: screenY } = gridToScreen(x, y);
+  const detail = gameState.map[x][y].detail;
+  const shade = Math.floor(12 * detail);
+  const tint = `rgba(0, 0, 0, ${0.04 + detail * 0.08})`;
   ctx.fillStyle = color;
+  ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+  ctx.fillStyle = tint;
   ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
   ctx.strokeStyle = "rgba(12, 18, 28, 0.35)";
   ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
@@ -472,6 +545,11 @@ function drawTile(x, y, color, terrain) {
     ctx.arc(screenX + 10, screenY + 12, 6, 0, Math.PI * 2);
     ctx.arc(screenX + 22, screenY + 20, 5, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  if (terrain === "rock") {
+    ctx.fillStyle = `rgba(140, 140, 140, ${0.08 + detail * 0.1})`;
+    ctx.fillRect(screenX + 6, screenY + 6, 6 + shade, 4 + shade);
   }
 }
 
@@ -636,6 +714,7 @@ function init() {
   gameState.time = 0;
   gameState.day = 1;
   gameState.selectedColonistId = null;
+  gameState.story = { chapter: 1, beaconBuilt: false, daysAfterBeacon: 0 };
   pushEvent("Колония высадилась. Удачи!");
   updateTasks();
 }
@@ -666,7 +745,8 @@ function handleBuildClick(tile) {
     camp: { label: "лагерь", cost: { wood: 10 }, work: 6 },
     stockpile: { label: "склад", cost: { wood: 12 }, work: 7 },
     workshop: { label: "мастерская", cost: { wood: 8, stone: 6 }, work: 8 },
-    farm: { label: "ферма", cost: { wood: 6, food: 4 }, work: 6 }
+    farm: { label: "ферма", cost: { wood: 6, food: 4 }, work: 6 },
+    beacon: { label: "маяк", cost: { wood: 10, stone: 10, tools: 2 }, work: 12 }
   };
   const definition = buildDefinitions[gameState.selectedBuild];
   if (!definition) return;
@@ -835,6 +915,15 @@ function updateTasks() {
         "Построй мастерскую.",
         "Создай хотя бы 2 инструмента."
       ]
+    },
+    {
+      title: "Сюжетная цель",
+      items: gameState.storyMode
+        ? [
+            "Построй маяк для сигнала.",
+            "Продержись 3 дня после сигнала."
+          ]
+        : ["Свободная игра: развивай колонию как хочешь."]
     }
   ];
   tasksList.innerHTML = tasks
@@ -875,6 +964,47 @@ function setupTutorial() {
   });
 }
 
+function renderColonistSelection() {
+  colonistGrid.innerHTML = colonistRoster
+    .map(
+      (colonist) =>
+        `<div class="colonist-card" data-id="${colonist.id}">
+          <strong>${colonist.name}</strong>
+          <ul class="colonist-traits">
+            ${colonist.traits.map((trait) => `<li>${trait}</li>`).join("")}
+          </ul>
+        </div>`
+    )
+    .join("");
+  const cards = colonistGrid.querySelectorAll(".colonist-card");
+  cards.forEach((card) => {
+    card.addEventListener("click", () => {
+      const id = card.dataset.id;
+      const selected = gameState.selectedColonists.find((item) => item.id === id);
+      if (selected) {
+        gameState.selectedColonists = gameState.selectedColonists.filter((item) => item.id !== id);
+        card.classList.remove("active");
+        return;
+      }
+      if (gameState.selectedColonists.length >= 3) return;
+      const data = colonistRoster.find((item) => item.id === id);
+      if (data) {
+        gameState.selectedColonists.push(data);
+        card.classList.add("active");
+      }
+    });
+  });
+}
+
+function startGame(storyMode) {
+  gameState.storyMode = storyMode;
+  if (gameState.selectedColonists.length !== 3) {
+    gameState.selectedColonists = colonistRoster.slice(0, 3);
+  }
+  setupModal.classList.remove("show");
+  init();
+}
+
 window.addEventListener("resize", resizeCanvas);
 document.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
@@ -897,6 +1027,8 @@ resizeCanvas();
 setTab("overview");
 updateTasks();
 updateZoomLabel();
-init();
 setupTutorial();
 renderLoop();
+renderColonistSelection();
+startCampaignButton.addEventListener("click", () => startGame(true));
+freePlayButton.addEventListener("click", () => startGame(false));
