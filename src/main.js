@@ -35,6 +35,22 @@ const dismantleBody = document.getElementById("dismantle-body");
 const dismantleConfirm = document.getElementById("dismantle-confirm");
 const dismantleCancel = document.getElementById("dismantle-cancel");
 const infoPanel = document.getElementById("info-panel");
+const mainMenuModal = document.getElementById("main-menu");
+const menuStoryButton = document.getElementById("menu-story");
+const menuFreeButton = document.getElementById("menu-free");
+const menuSettingsButton = document.getElementById("menu-settings");
+const menuInfoButton = document.getElementById("menu-info");
+const menuExitButton = document.getElementById("menu-exit");
+const pauseMenuModal = document.getElementById("pause-menu");
+const pauseContinueButton = document.getElementById("pause-continue");
+const pauseSaveButton = document.getElementById("pause-save");
+const pauseLoadButton = document.getElementById("pause-load");
+const pauseSettingsButton = document.getElementById("pause-settings");
+const pauseExitButton = document.getElementById("pause-exit");
+const systemModal = document.getElementById("system-modal");
+const systemTitle = document.getElementById("system-title");
+const systemBody = document.getElementById("system-body");
+const systemClose = document.getElementById("system-close");
 
 const TILE_SIZE = 32;
 const MAP_SIZE = 28;
@@ -156,7 +172,8 @@ const gameState = {
   buildMode: "build",
   pendingDismantle: null,
   selectedObject: null,
-  animalSpawnTimer: 0
+  animalSpawnTimer: 0,
+  pendingStartMode: null
 };
 
 const camera = {
@@ -1518,6 +1535,11 @@ speedButton.addEventListener("click", () => {
 togglePauseButton.addEventListener("click", () => {
   gameState.paused = !gameState.paused;
   togglePauseButton.textContent = gameState.paused ? "Продолжить" : "Пауза";
+  if (gameState.paused) {
+    openPauseMenu();
+  } else {
+    closePauseMenu();
+  }
 });
 
 zoomOutButton.addEventListener("click", () => {
@@ -1976,7 +1998,6 @@ function updateZoomLabel() {
 }
 
 function setupTutorial() {
-  tutorialModal.classList.add("show");
   startNewButton.addEventListener("click", () => {
     tutorialModal.classList.remove("show");
     init();
@@ -1984,6 +2005,45 @@ function setupTutorial() {
   continueButton.addEventListener("click", () => {
     tutorialModal.classList.remove("show");
   });
+}
+
+function showSystemModal(title, body) {
+  systemTitle.textContent = title;
+  systemBody.textContent = body;
+  systemModal.classList.add("show");
+}
+
+function openMainMenu() {
+  mainMenuModal.classList.add("show");
+  gameState.paused = true;
+  togglePauseButton.textContent = "Продолжить";
+}
+
+function closeMainMenu() {
+  mainMenuModal.classList.remove("show");
+}
+
+function openPauseMenu() {
+  if (!gameState.started) return;
+  pauseMenuModal.classList.add("show");
+  gameState.paused = true;
+  togglePauseButton.textContent = "Продолжить";
+}
+
+function closePauseMenu() {
+  pauseMenuModal.classList.remove("show");
+  if (gameState.started) {
+    gameState.paused = false;
+    togglePauseButton.textContent = "Пауза";
+  }
+}
+
+function startModeFlow(mode) {
+  gameState.pendingStartMode = mode;
+  closeMainMenu();
+  setupModal.classList.add("show");
+  renderColonistSelection();
+  updateExpeditionPrepUI();
 }
 
 function renderColonistSelection() {
@@ -2041,6 +2101,18 @@ document.addEventListener("keydown", (event) => {
     spaceDown = true;
     gameState.paused = !gameState.paused;
     togglePauseButton.textContent = gameState.paused ? "Продолжить" : "Пауза";
+    if (gameState.paused) {
+      openPauseMenu();
+    } else {
+      closePauseMenu();
+    }
+  }
+  if (event.code === "Escape") {
+    if (pauseMenuModal.classList.contains("show")) {
+      closePauseMenu();
+      return;
+    }
+    openPauseMenu();
   }
 });
 
@@ -2144,6 +2216,41 @@ setupTutorial();
 renderColonistSelection();
 renderBiomes();
 updateExpeditionPrepUI();
-startCampaignButton.addEventListener("click", () => startGame(true));
-freePlayButton.addEventListener("click", () => startGame(false));
+startCampaignButton.addEventListener("click", () => {
+  const mode = gameState.pendingStartMode ?? "story";
+  startGame(mode !== "free");
+  setupModal.classList.remove("show");
+});
+freePlayButton.addEventListener("click", () => {
+  const mode = gameState.pendingStartMode ?? "free";
+  startGame(mode === "free" ? false : true);
+  setupModal.classList.remove("show");
+});
+menuStoryButton.addEventListener("click", () => startModeFlow("story"));
+menuFreeButton.addEventListener("click", () => startModeFlow("free"));
+menuSettingsButton.addEventListener("click", () =>
+  showSystemModal("Настройки", "Настройки будут добавлены позже.")
+);
+menuInfoButton.addEventListener("click", () => {
+  tutorialModal.classList.add("show");
+});
+menuExitButton.addEventListener("click", () =>
+  showSystemModal("Выход", "Выход недоступен в браузере. Используйте вкладку браузера.")
+);
+pauseContinueButton.addEventListener("click", () => closePauseMenu());
+pauseSaveButton.addEventListener("click", () =>
+  showSystemModal("Сохранение", "Сохранение будет добавлено в следующей версии.")
+);
+pauseLoadButton.addEventListener("click", () =>
+  showSystemModal("Загрузка", "Загрузка будет добавлена в следующей версии.")
+);
+pauseSettingsButton.addEventListener("click", () =>
+  showSystemModal("Настройки", "Настройки будут добавлены позже.")
+);
+pauseExitButton.addEventListener("click", () => {
+  closePauseMenu();
+  openMainMenu();
+});
+systemClose.addEventListener("click", () => systemModal.classList.remove("show"));
+openMainMenu();
 renderLoop();
