@@ -394,6 +394,19 @@ footer {
   margin-top: 12px;
 }
 
+.menu-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.menu-actions.secondary {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.menu-actions button {
+  width: 100%;
+}
+
 .modal-wide {
   width: min(720px, 92vw);
 }
