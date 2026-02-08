@@ -221,6 +221,11 @@ canvas {
   gap: 10px;
 }
 
+#toggle-dismantle {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #0b1220;
+}
+
 .biome-list {
   display: grid;
   gap: 8px;
