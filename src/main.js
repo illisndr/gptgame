@@ -18,6 +18,7 @@ const startCampaignButton = document.getElementById("start-campaign");
 const freePlayButton = document.getElementById("free-play");
 const biomeList = document.getElementById("biome-list");
 const biomeRisk = document.getElementById("biome-risk");
+const biomeDetails = document.getElementById("biome-details");
 const teamSizeLabel = document.getElementById("team-size");
 const foodPackLabel = document.getElementById("food-pack");
 const waterPackLabel = document.getElementById("water-pack");
@@ -76,6 +77,34 @@ const resourceValues = {
   rock: { stone: 4 }
 };
 
+const RESOURCE_LABELS = {
+  food: "еда",
+  wood: "дерево",
+  stone: "камень",
+  tools: "инструменты",
+  water: "вода",
+  resin: "смола",
+  mushrooms: "грибы",
+  "rare-wood": "редкая древесина",
+  "medicinal-herbs": "лечебные травы",
+  peat: "торф",
+  "rare-clay": "редкая глина",
+  scrap: "лом",
+  alloys: "сплавы",
+  metal: "металл",
+  iron: "железо",
+  minerals: "минералы",
+  crystal: "кристаллы",
+  artifacts: "артефакты",
+  "ancient-books": "древние книги",
+  "ancient-mechanisms": "древние механизмы",
+  tech: "тех"
+};
+
+function getResourceLabel(key) {
+  return RESOURCE_LABELS[key] ?? key;
+}
+
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
@@ -126,7 +155,23 @@ const gameState = {
     wood: 20,
     stone: 6,
     tools: 0,
-    water: 8
+    water: 8,
+    resin: 0,
+    mushrooms: 0,
+    "rare-wood": 0,
+    "medicinal-herbs": 0,
+    peat: 0,
+    "rare-clay": 0,
+    scrap: 0,
+    alloys: 0,
+    metal: 0,
+    iron: 0,
+    minerals: 0,
+    crystal: 0,
+    artifacts: 0,
+    "ancient-books": 0,
+    "ancient-mechanisms": 0,
+    tech: 0
   },
   events: [],
   map: [],
@@ -191,48 +236,152 @@ const BIOMES = [
     id: "forest",
     name: "Лес",
     risk: 0.25,
-    resources: { wood: [4, 10], food: [2, 5], herbs: [0, 2] },
-    threats: ["Хищники", "Клещи"],
-    hidden: ["Следы охотников"],
-    rare: ["Семена древних деревьев"]
+    resources: {
+      wood: [4, 10],
+      food: [2, 5],
+      resin: [1, 3],
+      mushrooms: [1, 3],
+      "rare-wood": [0, 2]
+    },
+    threats: ["Хищники", "Клещи", "Ночные хищники"],
+    uniqueResources: ["смола", "грибы", "редкая древесина"],
+    features: ["дружелюбная фауна", "редкие ягоды", "скрытые тропы"],
+    peacefulMobs: [
+      { name: "Лесная лань", loot: { food: [2, 4] } },
+      { name: "Бобры", loot: { wood: [2, 4], resin: [0, 1] } }
+    ],
+    hostileMobs: [
+      { name: "Волчий патруль", loot: { food: [1, 3], "rare-wood": [0, 1] } }
+    ],
+    secrets: [
+      { name: "Поваленное древо", reward: { "rare-wood": [1, 2], resin: [1, 2] } },
+      { name: "Тайник охотников", reward: { tools: [0, 1], food: [1, 2] } }
+    ],
+    puzzles: [
+      { name: "Тропа духов", requires: "tools", reward: { mushrooms: [1, 2], "rare-wood": [1, 1] } }
+    ],
+    structures: ["Лесная сторожка", "Разрушенный мост", "Древний алтарь"],
+    baseItems: ["смола для клея", "грибные настои", "редкая древесина для мебели"]
   },
   {
     id: "swamp",
     name: "Болото",
     risk: 0.45,
-    resources: { reagents: [1, 3], water: [2, 4] },
-    threats: ["Болезни", "Токсичные испарения"],
-    hidden: ["Контейнер с данными"],
-    rare: ["Стабилизатор воды"],
+    resources: {
+      water: [2, 4],
+      "medicinal-herbs": [1, 3],
+      peat: [1, 3],
+      "rare-clay": [0, 2]
+    },
+    threats: ["Болезни", "Токсичные испарения", "Трясина"],
+    uniqueResources: ["лечебные травы", "торф", "редкая глина"],
+    features: ["скрытые тропы", "ядовитые испарения", "болотные оазисы"],
+    peacefulMobs: [
+      { name: "Болотная черепаха", loot: { water: [1, 2], peat: [0, 1] } }
+    ],
+    hostileMobs: [
+      { name: "Кислотный слизень", loot: { "medicinal-herbs": [0, 1], "rare-clay": [0, 1] } },
+      { name: "Топляк", loot: { peat: [1, 2] } }
+    ],
+    secrets: [
+      { name: "Затонувший сундук", reward: { "rare-clay": [1, 2], tools: [0, 1] } },
+      { name: "Скрытая лаборатория", reward: { tech: [1, 2], "medicinal-herbs": [1, 2] } }
+    ],
+    puzzles: [
+      { name: "Голоса из тумана", requires: "tools", reward: { "medicinal-herbs": [1, 2], water: [1, 2] } }
+    ],
+    structures: ["Заброшенная насосная", "Болотная ловушка", "Старая лодочная станция"],
+    baseItems: ["лечебные настои", "торфяные фильтры", "глиняная керамика"],
     unlockFlag: "swampHint"
   },
   {
     id: "wasteland",
     name: "Пустошь",
     risk: 0.5,
-    resources: { scrap: [2, 6], battery: [0, 2] },
-    threats: ["Радиация", "Мародёры"],
-    hidden: ["Следы каравана"],
-    rare: ["Силовой модуль"],
+    resources: {
+      scrap: [2, 6],
+      metal: [1, 3],
+      alloys: [0, 2]
+    },
+    threats: ["Радиация", "Мародёры", "Песчаные вихри"],
+    uniqueResources: ["лом", "металл", "сплавы"],
+    features: ["песчаные вихри", "обугленные руины", "мобильные лагеря"],
+    peacefulMobs: [
+      { name: "Сборщики", loot: { scrap: [1, 3] } }
+    ],
+    hostileMobs: [
+      { name: "Пустошный рейдер", loot: { metal: [1, 2], scrap: [1, 2] } },
+      { name: "Робо-пёс", loot: { alloys: [0, 1], tech: [0, 1] } }
+    ],
+    secrets: [
+      { name: "Разбитый конвой", reward: { scrap: [2, 4], metal: [1, 2] } },
+      { name: "Скрытый склад топлива", reward: { alloys: [1, 2], tools: [0, 1] } }
+    ],
+    puzzles: [
+      { name: "Запертый контейнер", requires: "tools", reward: { metal: [1, 2], alloys: [0, 1] } }
+    ],
+    structures: ["Поле обломков", "Сломанный передатчик", "Станция дозаправки"],
+    baseItems: ["металлоконструкции", "усиленные панели", "ремкомплекты"],
     unlockFlag: "wastelandHint"
   },
   {
     id: "ruins",
     name: "Руины",
     risk: 0.4,
-    resources: { tech: [1, 4], stone: [1, 3] },
-    threats: ["Дроны", "Обрушения"],
-    hidden: ["Архив катастрофы"],
-    rare: ["Чертёж маяка v2"]
+    resources: {
+      tech: [1, 4],
+      artifacts: [1, 2],
+      "ancient-books": [0, 2],
+      "ancient-mechanisms": [0, 2],
+      stone: [1, 3]
+    },
+    threats: ["Дроны", "Обрушения", "Ловушки"],
+    uniqueResources: ["артефакты", "древние книги", "механизмы"],
+    features: ["ловушки", "древние архивы", "скрытые ниши"],
+    peacefulMobs: [
+      { name: "Старые дроны-ремонтники", loot: { tech: [1, 2] } }
+    ],
+    hostileMobs: [
+      { name: "Охранный дрон", loot: { tech: [1, 2], "ancient-mechanisms": [0, 1] } }
+    ],
+    secrets: [
+      { name: "Архив катастрофы", reward: { "ancient-books": [1, 2], artifacts: [1, 1] } },
+      { name: "Запертый сейф", reward: { tech: [1, 2], "ancient-mechanisms": [1, 1] } }
+    ],
+    puzzles: [
+      { name: "Сбойная консоль", requires: "tools", reward: { tech: [1, 2], artifacts: [0, 1] } }
+    ],
+    structures: ["Заброшенный купол", "Лабораторный блок", "Трещина в куполе"],
+    baseItems: ["архивные реликвии", "устройства усиления", "декор музея"]
   },
   {
     id: "mountains",
     name: "Горы",
     risk: 0.55,
-    resources: { stone: [3, 8], crystal: [0, 1] },
-    threats: ["Лавины", "Холод"],
-    hidden: ["Пещера выживших"],
-    rare: ["Кристалл связи"],
+    resources: {
+      stone: [3, 8],
+      iron: [1, 3],
+      minerals: [1, 2],
+      crystal: [0, 2]
+    },
+    threats: ["Лавины", "Холод", "Горные хищники"],
+    uniqueResources: ["кристаллы", "железо", "минералы"],
+    features: ["кристальные пещеры", "лавовые потоки", "узкие перевалы"],
+    peacefulMobs: [
+      { name: "Горные козы", loot: { food: [1, 3] } }
+    ],
+    hostileMobs: [
+      { name: "Снежный хищник", loot: { crystal: [0, 1], iron: [1, 2] } }
+    ],
+    secrets: [
+      { name: "Кристальная жила", reward: { crystal: [1, 2], minerals: [1, 2] } },
+      { name: "Заснеженный тайник", reward: { iron: [1, 2], tools: [0, 1] } }
+    ],
+    puzzles: [
+      { name: "Каменная плита", requires: "tools", reward: { crystal: [1, 1], iron: [1, 2] } }
+    ],
+    structures: ["Горный редут", "Старая шахта", "Сигнальная площадка"],
+    baseItems: ["кристальные светильники", "металлические балки", "каменные укрепления"],
     unlockFlag: "mountainHint"
   }
 ];
@@ -902,6 +1051,43 @@ function updateStructures(delta) {
       pushEvent("Загон дал припасы (+1 еды).");
     }
   }
+  if (structure.type === "herbalist") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 26) {
+      structure.timer = 0;
+      if (gameState.resources["medicinal-herbs"] > 0) {
+        gameState.resources["medicinal-herbs"] -= 1;
+        gameState.colonists.forEach((col) => {
+          col.mood = Math.min(100, col.mood + 3);
+          col.rest = Math.min(100, col.rest + 3);
+        });
+        pushEvent("Травник приготовил настой (+мораль, отдых).");
+      }
+    }
+  }
+  if (structure.type === "resin-press") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 28) {
+      structure.timer = 0;
+      if (gameState.resources.resin > 0) {
+        gameState.resources.resin -= 1;
+        gameState.resources.tools += 1;
+        pushEvent("Смоляной пресс дал клей (+1 инструмент).");
+      }
+    }
+  }
+  if (structure.type === "smelter") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 32) {
+      structure.timer = 0;
+      if (gameState.resources.iron > 0 && gameState.resources.minerals > 0) {
+        gameState.resources.iron -= 1;
+        gameState.resources.minerals -= 1;
+        gameState.resources.tools += 1;
+        pushEvent("Плавильня изготовила инструмент.");
+      }
+    }
+  }
 }
 
 function updateResources(delta) {
@@ -1247,6 +1433,18 @@ const BUILDING_DEFS = {
     lightColor: "rgba(200, 230, 255, 0.35)",
     effects: ["свет: обзор +"]
   },
+  "crystal-lamp": {
+    label: "кристальная лампа",
+    description: "Чистый свет от кристаллов.",
+    category: "lights",
+    size: { w: 1, h: 1 },
+    cost: { wood: 4, crystal: 2, tools: 1 },
+    work: 5,
+    salvage: { wood: 2, crystal: 1 },
+    lightRadius: 3.8,
+    lightColor: "rgba(170, 235, 255, 0.45)",
+    effects: ["свет: кристаллы +"]
+  },
   kitchen: {
     label: "кухня",
     description: "Ускоряет приготовление пищи.",
@@ -1276,6 +1474,36 @@ const BUILDING_DEFS = {
     work: 6,
     salvage: { wood: 5, stone: 2 },
     effects: ["дерево: эффективность +"]
+  },
+  herbalist: {
+    label: "травник",
+    description: "Использует травы для восстановления.",
+    category: "functional",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6, "medicinal-herbs": 3, water: 2 },
+    work: 5,
+    salvage: { wood: 3 },
+    effects: ["медицина: восстановление +"]
+  },
+  "resin-press": {
+    label: "смоляной пресс",
+    description: "Готовит клей для мастерства.",
+    category: "functional",
+    size: { w: 1, h: 1 },
+    cost: { wood: 4, resin: 3, "rare-wood": 1 },
+    work: 5,
+    salvage: { wood: 2 },
+    effects: ["материалы: клей +"]
+  },
+  smelter: {
+    label: "плавильня",
+    description: "Плавит руду в инструменты.",
+    category: "functional",
+    size: { w: 2, h: 2 },
+    cost: { stone: 6, iron: 4, minerals: 2 },
+    work: 8,
+    salvage: { stone: 3, iron: 2 },
+    effects: ["инструменты: плавка +"]
   },
   greenhouse: {
     label: "оранжерея",
@@ -1343,6 +1571,26 @@ const BUILDING_DEFS = {
     work: 3,
     salvage: { wood: 1 },
     effects: ["мораль: символ +"]
+  },
+  "artifact-display": {
+    label: "витрина артефактов",
+    description: "Показывает редкие находки.",
+    category: "decor",
+    size: { w: 1, h: 1 },
+    cost: { wood: 4, artifacts: 2 },
+    work: 4,
+    salvage: { wood: 2 },
+    effects: ["мораль: история +"]
+  },
+  "archive-table": {
+    label: "архивный стол",
+    description: "Изучение древних книг.",
+    category: "decor",
+    size: { w: 2, h: 1 },
+    cost: { wood: 5, "ancient-books": 2, tools: 1 },
+    work: 4,
+    salvage: { wood: 2 },
+    effects: ["мораль: знания +"]
   },
   gazebo: {
     label: "беседка",
@@ -1710,9 +1958,13 @@ function drawStructure(structure) {
     lantern: "#e8b86a",
     "street-lamp": "#9bb6d8",
     "light-tower": "#9fb8d9",
+    "crystal-lamp": "#9cd5f2",
     kitchen: "#c48a5a",
     forge: "#7f6d6d",
     carpenter: "#9b7a5b",
+    herbalist: "#7aa46c",
+    "resin-press": "#b4834c",
+    smelter: "#6f6d6b",
     greenhouse: "#5f8f6a",
     pantry: "#7c6b59",
     infirmary: "#6d8fb0",
@@ -1720,6 +1972,8 @@ function drawStructure(structure) {
     "hunting-lodge": "#8a6a4a",
     corral: "#9b845f",
     banner: "#b36a8b",
+    "artifact-display": "#8b7aa0",
+    "archive-table": "#7e6b5c",
     gazebo: "#b08a5a",
     fountain: "#6ea0b8",
     statue: "#8c8f95",
@@ -1990,7 +2244,7 @@ function render() {
 function updateHud() {
   hud.innerHTML = `День ${gameState.day} · ${gameState.time.toFixed(1)}ч · Поселение: ${gameState.colonists.length}`;
   resourcesList.innerHTML = Object.entries(gameState.resources)
-    .map(([key, value]) => `<li>${key}: ${value}</li>`)
+    .map(([key, value]) => `<li>${getResourceLabel(key)}: ${value}</li>`)
     .join("");
   colonistsList.innerHTML = gameState.colonists
     .map(
@@ -2009,7 +2263,29 @@ function init() {
   gameState.structures = [{ type: "camp", x: 14, y: 14 }];
   gameState.buildOrders = [];
   gameState.events = [];
-  gameState.resources = { food: 16, wood: 20, stone: 6, tools: 0, water: 8 };
+  gameState.resources = {
+    food: 16,
+    wood: 20,
+    stone: 6,
+    tools: 0,
+    water: 8,
+    resin: 0,
+    mushrooms: 0,
+    "rare-wood": 0,
+    "medicinal-herbs": 0,
+    peat: 0,
+    "rare-clay": 0,
+    scrap: 0,
+    alloys: 0,
+    metal: 0,
+    iron: 0,
+    minerals: 0,
+    crystal: 0,
+    artifacts: 0,
+    "ancient-books": 0,
+    "ancient-mechanisms": 0,
+    tech: 0
+  };
   gameState.time = 0;
   gameState.day = 1;
   gameState.selectedColonistId = null;
@@ -2394,8 +2670,41 @@ function renderBiomes() {
       gameState.exploration.selectedBiome = biome.id;
       renderBiomes();
       updateBiomeRisk();
+      updateBiomeDetails();
     });
   });
+}
+
+function updateBiomeDetails() {
+  const biome = getBiomeById(gameState.exploration.selectedBiome);
+  if (!biome || !biomeDetails) {
+    if (biomeDetails) biomeDetails.innerHTML = "";
+    return;
+  }
+  const resourceList = Object.keys(biome.resources ?? {})
+    .map((resource) => getResourceLabel(resource))
+    .join(", ");
+  const threats = biome.threats?.join(", ") ?? "—";
+  const ruins = biome.structures?.join(", ") ?? "—";
+  const features = biome.features?.map((feature) => `<span class="biome-tag">${feature}</span>`).join("") ?? "";
+  const peaceful = biome.peacefulMobs?.map((mob) => mob.name).join(", ") ?? "—";
+  const hostile = biome.hostileMobs?.map((mob) => mob.name).join(", ") ?? "—";
+  const secrets = biome.secrets?.map((secret) => secret.name).join(", ") ?? "—";
+  const baseItems = biome.baseItems?.join(", ") ?? "—";
+
+  biomeDetails.innerHTML = `
+    <h4>${biome.name}</h4>
+    <div class="biome-tags">${features}</div>
+    <ul>
+      <li>Ресурсы: ${resourceList || "—"}</li>
+      <li>Мирные мобы: ${peaceful}</li>
+      <li>Агрессивные мобы: ${hostile}</li>
+      <li>Тайны: ${secrets}</li>
+      <li>Постройки и руины: ${ruins}</li>
+      <li>Угрозы: ${threats}</li>
+      <li>Предметы для базы: ${baseItems}</li>
+    </ul>
+  `;
 }
 
 function updateBiomeRisk() {
@@ -2417,6 +2726,7 @@ function updateExpeditionPrepUI() {
   waterPackLabel.textContent = String(gameState.exploration.packs.water);
   toolsPackLabel.textContent = String(gameState.exploration.packs.tools);
   updateBiomeRisk();
+  updateBiomeDetails();
 }
 
 function logExpedition(message) {
@@ -2585,24 +2895,69 @@ function resolveExpedition() {
 
   const loot = {};
   const addLoot = (type, min, max) => {
+    if (min === undefined || max === undefined) return;
     const amount = Math.floor(min + Math.random() * (max - min + 1));
+    if (amount <= 0) return;
     loot[type] = (loot[type] ?? 0) + amount;
+  };
+  const applyReward = (reward) => {
+    if (!reward) return;
+    Object.entries(reward).forEach(([resource, range]) => {
+      if (Array.isArray(range)) {
+        addLoot(resource, range[0], range[1]);
+      } else {
+        addLoot(resource, range, range);
+      }
+    });
   };
 
   if (outcome !== "fail") {
-    if (biome.resources.wood) addLoot("wood", ...biome.resources.wood);
-    if (biome.resources.food) addLoot("food", ...biome.resources.food);
-    if (biome.resources.stone) addLoot("stone", ...biome.resources.stone);
-    if (biome.resources.water) addLoot("water", ...biome.resources.water);
+    Object.entries(biome.resources ?? {}).forEach(([resource, range]) => {
+      if (Array.isArray(range)) addLoot(resource, range[0], range[1]);
+    });
   }
 
-  if (outcome === "success" && Math.random() < 0.25) {
-    addLoot("tools", 1, 2);
-    logExpedition(`Редкая находка: ${biome.rare[Math.floor(Math.random() * biome.rare.length)]}.`);
+  if (Math.random() < 0.45) {
+    const hostileEncounter = Math.random() < biome.risk;
+    const mobList = hostileEncounter ? biome.hostileMobs : biome.peacefulMobs;
+    if (mobList?.length) {
+      const mob = mobList[Math.floor(Math.random() * mobList.length)];
+      logExpedition(
+        hostileEncounter ? `Столкновение: ${mob.name}.` : `Наблюдение: ${mob.name}.`
+      );
+      applyReward(mob.loot);
+      if (hostileEncounter) {
+        gameState.colonists.slice(0, team).forEach((col) => {
+          col.mood = Math.max(10, col.mood - 3);
+          col.rest = Math.max(0, col.rest - 6);
+        });
+      }
+    }
   }
 
-  if (Math.random() < 0.35) {
-    logExpedition(`Скрытое событие: ${biome.hidden[Math.floor(Math.random() * biome.hidden.length)]}.`);
+  if ((outcome === "success" || outcome === "partial") && Math.random() < 0.4) {
+    const secret = biome.secrets?.length
+      ? biome.secrets[Math.floor(Math.random() * biome.secrets.length)]
+      : null;
+    if (secret) {
+      logExpedition(`Тайна: ${secret.name}.`);
+      applyReward(secret.reward);
+    }
+  }
+
+  if (outcome === "success" && Math.random() < 0.3 && biome.puzzles?.length) {
+    const puzzle = biome.puzzles[Math.floor(Math.random() * biome.puzzles.length)];
+    if (puzzle.requires === "tools" && packs.tools < 1) {
+      logExpedition(`Мини-головоломка не решена: ${puzzle.name}. Не хватило инструментов.`);
+    } else {
+      logExpedition(`Мини-головоломка решена: ${puzzle.name}.`);
+      applyReward(puzzle.reward);
+    }
+  }
+
+  if (Math.random() < 0.35 && biome.structures?.length) {
+    const structure = biome.structures[Math.floor(Math.random() * biome.structures.length)];
+    logExpedition(`Найдены руины: ${structure}.`);
   }
 
   if (outcome === "partial") {
@@ -2627,7 +2982,7 @@ function resolveExpedition() {
   );
 
   const lootSummary = Object.entries(loot)
-    .map(([resource, amount]) => `${resource}+${amount}`)
+    .map(([resource, amount]) => `${getResourceLabel(resource)} +${amount}`)
     .join(", ");
   if (lootSummary) {
     pushEvent(`Экспедиция: ${biome.name}, добыча: ${lootSummary}.`);
@@ -2673,7 +3028,7 @@ function updateInfoPanel() {
     const def = BUILDING_DEFS[gameState.hoverBuildId];
     if (def) {
       const cost = Object.entries(def.cost ?? {})
-        .map(([resource, amount]) => `${resource}: ${amount}`)
+        .map(([resource, amount]) => `${getResourceLabel(resource)}: ${amount}`)
         .join(", ");
       const size = def.size ? `${def.size.w}x${def.size.h}` : "1x1";
       const effects = def.effects?.length ? `<li>Эффекты: ${def.effects.join(", ")}</li>` : "";
