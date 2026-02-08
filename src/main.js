@@ -528,6 +528,13 @@ function canBuild(x, y) {
   return canBuildArea(x, y, 1, 1);
 }
 
+function getBuildAnchor(tile, def) {
+  const { w, h } = def?.size ?? { w: 1, h: 1 };
+  const anchorX = tile.x - Math.floor((w - 1) / 2);
+  const anchorY = tile.y - Math.floor((h - 1) / 2);
+  return { x: anchorX, y: anchorY, w, h };
+}
+
 function moveTowards(colonist, targetX, targetY) {
   if (colonist.x === targetX && colonist.y === targetY) return true;
   const dx = Math.sign(targetX - colonist.x);
@@ -705,7 +712,12 @@ function handleTask(colonist, delta) {
         order.progress += colonist.carry.amount;
         colonist.carry = null;
         if (order.progress >= order.cost) {
-          gameState.structures.push({ type: order.type ?? "camp", x: order.x, y: order.y });
+          gameState.structures.push({
+            type: order.type ?? "camp",
+            x: order.x,
+            y: order.y,
+            size: order.size ? { ...order.size } : undefined
+          });
           gameState.buildOrders = gameState.buildOrders.filter((item) => item !== order);
           pushEvent("Постройка завершена.");
         }
@@ -1443,18 +1455,29 @@ function drawBuildPreview() {
   if (!gameState.hoverTile) return;
   const def = BUILDING_DEFS[gameState.selectedBuild];
   if (!def) return;
-  const { w, h } = def.size ?? { w: 1, h: 1 };
-  const canPlace = canBuildArea(gameState.hoverTile.x, gameState.hoverTile.y, w, h);
+  const anchor = getBuildAnchor(gameState.hoverTile, def);
+  const { w, h } = anchor;
+  const canPlace = canBuildArea(anchor.x, anchor.y, w, h);
   const fill = canPlace ? "rgba(52, 211, 153, 0.2)" : "rgba(248, 113, 113, 0.25)";
   const stroke = canPlace ? "rgba(52, 211, 153, 0.6)" : "rgba(248, 113, 113, 0.6)";
   ctx.fillStyle = fill;
   ctx.strokeStyle = stroke;
   for (let dx = 0; dx < w; dx += 1) {
     for (let dy = 0; dy < h; dy += 1) {
-      const { x: sx, y: sy } = gridToScreen(gameState.hoverTile.x + dx, gameState.hoverTile.y + dy);
+      const { x: sx, y: sy } = gridToScreen(anchor.x + dx, anchor.y + dy);
       ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
       ctx.strokeRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
     }
+  }
+}
+
+function drawDismantlePreview() {
+  if (gameState.selectedTab !== "build" || gameState.buildMode !== "dismantle") return;
+  ctx.strokeStyle = "rgba(248, 113, 113, 0.6)";
+  for (const structure of gameState.structures) {
+    const { x: screenX, y: screenY } = gridToScreen(structure.x, structure.y);
+    const { w, h } = getFootprint(structure);
+    ctx.strokeRect(screenX + 3, screenY + 3, TILE_SIZE * w - 6, TILE_SIZE * h - 6);
   }
 }
 
@@ -1535,6 +1558,7 @@ function render() {
     }
   }
 
+  drawDismantlePreview();
   drawBuildPreview();
   for (const node of gameState.nodes) {
     if (node.amount > 0) drawResource(node);
@@ -1671,8 +1695,8 @@ function handleBuildClick(tile) {
     return;
   }
   const definition = BUILDING_DEFS[gameState.selectedBuild];
-  const footprint = definition?.size ?? { w: 1, h: 1 };
-  if (!canBuildArea(tile.x, tile.y, footprint.w, footprint.h)) {
+  const anchor = getBuildAnchor(tile, definition);
+  if (!canBuildArea(anchor.x, anchor.y, anchor.w, anchor.h)) {
     if (gameState.buildMode === "dismantle") {
       const structure = gameState.structures.find((item) => item.x === tile.x && item.y === tile.y);
       if (!structure) {
@@ -1698,12 +1722,12 @@ function handleBuildClick(tile) {
     gameState.resources[resource] -= amount;
   }
   gameState.buildOrders.push({
-    x: tile.x,
-    y: tile.y,
+    x: anchor.x,
+    y: anchor.y,
     cost: definition.work,
     progress: 0,
     type: gameState.selectedBuild,
-    size: { ...footprint }
+    size: { w: anchor.w, h: anchor.h }
   });
   pushEvent(`Создан заказ на ${definition.label}.`);
 }
@@ -2235,7 +2259,7 @@ function updateSelectedUnit() {
 }
 
 function updateInfoPanel() {
-  if (gameState.hoverBuildId && gameState.selectedTab === "build") {
+  if (!gameState.selectedObject && gameState.hoverBuildId && gameState.selectedTab === "build") {
     const def = BUILDING_DEFS[gameState.hoverBuildId];
     if (def) {
       const cost = Object.entries(def.cost ?? {})
@@ -2320,6 +2344,7 @@ function showSystemModal(title, body) {
 
 function openMainMenu() {
   mainMenuModal.classList.add("show");
+  setupModal.classList.remove("show");
   gameState.paused = true;
   togglePauseButton.textContent = "Продолжить";
 }
@@ -2347,6 +2372,15 @@ function startModeFlow(mode) {
   gameState.pendingStartMode = mode;
   closeMainMenu();
   setupModal.classList.add("show");
+  if (mode === "story") {
+    startCampaignButton.removeAttribute("hidden");
+    freePlayButton.setAttribute("hidden", "true");
+    startCampaignButton.textContent = "Начать сюжет";
+  } else {
+    freePlayButton.removeAttribute("hidden");
+    startCampaignButton.setAttribute("hidden", "true");
+    freePlayButton.textContent = "Свободная игра";
+  }
   renderColonistSelection();
   updateExpeditionPrepUI();
 }
@@ -2388,6 +2422,8 @@ function startGame(storyMode) {
   if (gameState.selectedColonists.length !== 3) {
     gameState.selectedColonists = colonistRoster.slice(0, 3);
   }
+  startCampaignButton.removeAttribute("hidden");
+  freePlayButton.removeAttribute("hidden");
   setupModal.classList.remove("show");
   init();
   renderBiomes();
