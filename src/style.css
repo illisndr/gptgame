@@ -285,6 +285,22 @@ canvas {
   color: #c7d2e6;
 }
 
+#info-panel {
+  font-size: 12px;
+  color: #c7d2e6;
+}
+
+#info-panel h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #e7edf6;
+}
+
+#info-panel ul {
+  padding-left: 16px;
+  margin: 6px 0 0;
+}
+
 .build-option {
   display: flex;
   justify-content: space-between;
