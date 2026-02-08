@@ -217,7 +217,14 @@ const gameState = {
     team: 2,
     packs: { food: 4, water: 3, tools: 1 },
     selectedBiome: "forest",
-    log: []
+    log: [],
+    biomeMemory: {}
+  },
+  activeExpedition: null,
+  saveStats: {
+    day: 1,
+    count: 0,
+    maxPerDay: 3
   },
   choice: null,
   buildMode: "build",
@@ -391,6 +398,66 @@ const BIOMES = [
     unlockFlag: "mountainHint"
   }
 ];
+
+const BIOME_FAUNA = {
+  forest: [
+    { id: "forest-deer", name: "Лань", aggressive: false, max: 4, loot: { food: [2, 4] } },
+    { id: "forest-boar", name: "Дикий кабан", aggressive: true, max: 2, loot: { food: [3, 5] } },
+    { id: "forest-wolf", name: "Волчья стая", aggressive: true, max: 1, loot: { food: [1, 2] } }
+  ],
+  swamp: [
+    { id: "swamp-heron", name: "Болотная птица", aggressive: false, max: 3, loot: { food: [1, 2] } },
+    { id: "swamp-croc", name: "Топляк-хищник", aggressive: true, max: 2, loot: { food: [2, 4] } },
+    { id: "swamp-leech", name: "Кровосос", aggressive: true, max: 1, loot: { "medicinal-herbs": [0, 1] } }
+  ],
+  wasteland: [
+    { id: "waste-rat", name: "Пустошный грызун", aggressive: false, max: 3, loot: { scrap: [1, 2] } },
+    { id: "waste-stalker", name: "Хищник-сталкер", aggressive: true, max: 2, loot: { metal: [0, 1], food: [1, 2] } },
+    { id: "waste-beast", name: "Обугленный зверь", aggressive: true, max: 1, loot: { alloys: [0, 1] } }
+  ],
+  ruins: [
+    { id: "ruins-drone", name: "Сторожевой дрон", aggressive: true, max: 2, loot: { tech: [1, 2] } },
+    { id: "ruins-swarm", name: "Мехасаранча", aggressive: true, max: 1, loot: { "ancient-mechanisms": [0, 1] } },
+    { id: "ruins-cat", name: "Старый сервис-бот", aggressive: false, max: 2, loot: { tech: [0, 1] } }
+  ],
+  mountains: [
+    { id: "mountain-goat", name: "Горная коза", aggressive: false, max: 3, loot: { food: [1, 2] } },
+    { id: "mountain-lurker", name: "Снежный хищник", aggressive: true, max: 2, loot: { crystal: [0, 1], iron: [1, 2] } },
+    { id: "mountain-bear", name: "Горный зверь", aggressive: true, max: 1, loot: { food: [2, 4] } }
+  ]
+};
+
+function getBiomeMemory(biomeId) {
+  if (!gameState.exploration.biomeMemory[biomeId]) {
+    const fauna = {};
+    (BIOME_FAUNA[biomeId] ?? []).forEach((animal) => {
+      fauna[animal.id] = { count: animal.max, max: animal.max };
+    });
+    gameState.exploration.biomeMemory[biomeId] = {
+      visits: 0,
+      depletion: 0,
+      hostility: 0,
+      lastVisitDay: 0,
+      fauna
+    };
+  }
+  return gameState.exploration.biomeMemory[biomeId];
+}
+
+function updateBiomeMemoryDaily() {
+  Object.keys(gameState.exploration.biomeMemory).forEach((biomeId) => {
+    const memory = gameState.exploration.biomeMemory[biomeId];
+    if (!memory) return;
+    memory.depletion = Math.max(0, memory.depletion - 0.03);
+    memory.hostility = Math.max(0, memory.hostility - 0.02);
+    Object.entries(memory.fauna ?? {}).forEach(([id, state]) => {
+      const max = state.max ?? 0;
+      if (state.count < max) {
+        state.count = Math.min(max, state.count + 0.2);
+      }
+    });
+  });
+}
 
 const ANIMALS = [
   {
@@ -596,7 +663,8 @@ function createColonist(data, x, y) {
     hunger: 100,
     rest: 100,
     mood: 80,
-    stress: 5
+    stress: 5,
+    injury: 0
   };
 }
 
@@ -707,6 +775,13 @@ function moveTowards(colonist, targetX, targetY) {
 function updateNeeds(colonist, delta) {
   colonist.hunger = Math.max(0, colonist.hunger - 0.7 * delta * colonist.modifiers.hungerRate);
   colonist.rest = Math.max(0, colonist.rest - 0.5 * delta / colonist.modifiers.restRate);
+  const hasInfirmary = gameState.structures.some(
+    (structure) => structure.type === "infirmary" && !structure.disabled
+  );
+  const recoveryRate = hasInfirmary ? 0.18 : 0.08;
+  if (colonist.rest > 60) {
+    colonist.injury = clamp(colonist.injury - recoveryRate * delta, 0, 100);
+  }
   const stressGain =
     (colonist.hunger < 35 ? 0.45 : 0) +
     (colonist.rest < 35 ? 0.45 : 0) +
@@ -932,12 +1007,19 @@ function pushEvent(message) {
 }
 
 function tickEvents() {
-  if (Math.random() < 0.002) {
+  const wealth =
+    (gameState.resources.food +
+      gameState.resources.wood +
+      gameState.resources.stone +
+      gameState.resources.tools * 2) /
+    80;
+  const eventChance = 0.002 + Math.min(0.003, wealth * 0.0015);
+  if (Math.random() < eventChance) {
     const roll = Math.random();
-    if (roll < 0.35) {
+    if (roll < 0.3) {
       gameState.resources.food += 6;
       pushEvent("Торговцы принесли провизию (+6 еды).");
-    } else if (roll < 0.7) {
+    } else if (roll < 0.6) {
       gameState.colonists.forEach((colonist) => {
         colonist.mood = Math.max(10, colonist.mood - 8);
       });
@@ -1171,6 +1253,25 @@ function checkRescueEvent() {
     gameState.resources.wood += 4;
     gameState.resources.water += 3;
     pushEvent("Спасатели оставили припасы. Это ваш шанс восстановиться.");
+  }
+}
+
+function applyDailyDecay() {
+  const hasPantry = gameState.structures.some(
+    (structure) => structure.type === "pantry" && !structure.disabled
+  );
+  const spoilRate = hasPantry ? 0.01 : 0.03;
+  const foodLoss = Math.floor(gameState.resources.food * spoilRate);
+  if (foodLoss > 0) {
+    gameState.resources.food = Math.max(0, gameState.resources.food - foodLoss);
+    pushEvent(`Порча запасов: потеряно еды ${foodLoss}.`);
+  }
+}
+
+function resetDailySaveLimit() {
+  if (gameState.saveStats.day !== gameState.day) {
+    gameState.saveStats.day = gameState.day;
+    gameState.saveStats.count = 0;
   }
 }
 
@@ -1838,8 +1939,13 @@ function getWorkEfficiency(colonist, daylight, lit) {
   const fatiguePenalty = colonist.rest < 25 ? 0.65 : colonist.rest < 45 ? 0.85 : 1;
   const hungerPenalty = colonist.hunger < 25 ? 0.7 : colonist.hunger < 45 ? 0.88 : 1;
   const moodPenalty = colonist.mood < 35 ? 0.85 : 1;
+  const injuryPenalty = 1 - Math.min(0.35, colonist.injury / 140);
   const nightPenalty = daylight < 0.5 ? (lit ? 0.9 : 0.7) : 1;
-  return clamp(stressPenalty * fatiguePenalty * hungerPenalty * moodPenalty * nightPenalty, 0.45, 1.1);
+  return clamp(
+    stressPenalty * fatiguePenalty * hungerPenalty * moodPenalty * injuryPenalty * nightPenalty,
+    0.35,
+    1.1
+  );
 }
 
 function update(delta) {
@@ -1850,11 +1956,15 @@ function update(delta) {
     gameState.day += 1;
     gameState.time = 0;
     pushEvent(`Начался день ${gameState.day}.`);
+    applyDailyDecay();
+    updateBiomeMemoryDaily();
+    resetDailySaveLimit();
     updateStory();
   }
   tickEvents();
   updateResources(delta);
   updateStructures(delta, workBoost);
+  updateActiveExpedition(delta);
   updateAnimals(delta);
   checkRescueEvent();
 
@@ -2331,7 +2441,7 @@ function updateHud() {
   colonistsList.innerHTML = gameState.colonists
     .map(
       (colonist) =>
-        `<li>${colonist.name} (${colonist.role}) — ${colonist.task} · голод ${colonist.hunger.toFixed(0)} · отдых ${colonist.rest.toFixed(0)} · настроение ${colonist.mood.toFixed(0)} · стресс ${colonist.stress.toFixed(0)}</li>`
+        `<li>${colonist.name} (${colonist.role}) — ${colonist.task} · голод ${colonist.hunger.toFixed(0)} · отдых ${colonist.rest.toFixed(0)} · настроение ${colonist.mood.toFixed(0)} · стресс ${colonist.stress.toFixed(0)} · травмы ${colonist.injury.toFixed(0)}</li>`
     )
     .join("");
   eventsList.innerHTML = gameState.events.map((event) => `<li>${event.message}</li>`).join("");
@@ -2382,6 +2492,15 @@ function init() {
     wastelandHint: false,
     mountainHint: false
   };
+  gameState.exploration = {
+    team: 2,
+    packs: { food: 4, water: 3, tools: 1 },
+    selectedBiome: "forest",
+    log: [],
+    biomeMemory: {}
+  };
+  gameState.activeExpedition = null;
+  gameState.saveStats = { day: gameState.day, count: 0, maxPerDay: 3 };
   gameState.started = true;
   pushEvent("Колония высадилась. Удачи!");
   updateTasks();
@@ -2773,6 +2892,13 @@ function updateBiomeDetails() {
   const hostile = biome.hostileMobs?.map((mob) => mob.name).join(", ") ?? "—";
   const secrets = biome.secrets?.map((secret) => secret.name).join(", ") ?? "—";
   const baseItems = biome.baseItems?.join(", ") ?? "—";
+  const memory = getBiomeMemory(biome.id);
+  const fauna = (BIOME_FAUNA[biome.id] ?? [])
+    .map((animal) => {
+      const count = memory.fauna?.[animal.id]?.count ?? 0;
+      return `${animal.name}: ${count.toFixed(0)}`;
+    })
+    .join(", ");
 
   biomeDetails.innerHTML = `
     <h4>${biome.name}</h4>
@@ -2781,10 +2907,12 @@ function updateBiomeDetails() {
       <li>Ресурсы: ${resourceList || "—"}</li>
       <li>Мирные мобы: ${peaceful}</li>
       <li>Агрессивные мобы: ${hostile}</li>
+      <li>Фауна (остаток): ${fauna || "—"}</li>
       <li>Тайны: ${secrets}</li>
       <li>Постройки и руины: ${ruins}</li>
       <li>Угрозы: ${threats}</li>
       <li>Предметы для базы: ${baseItems}</li>
+      <li>Память биома: истощение ${(memory.depletion ?? 0).toFixed(2)} · агрессия ${(memory.hostility ?? 0).toFixed(2)}</li>
     </ul>
   `;
 }
@@ -2795,9 +2923,11 @@ function updateBiomeRisk() {
     biomeRisk.textContent = "Риск: —";
     return;
   }
+  const memory = getBiomeMemory(biome.id);
   const prep = gameState.exploration.packs;
   const prepScore = (prep.food + prep.water + prep.tools * 2) / 10;
-  const risk = Math.max(0.1, biome.risk - prepScore * 0.2);
+  const memoryRisk = (memory.depletion ?? 0) * 0.35 + (memory.hostility ?? 0) * 0.45;
+  const risk = Math.max(0.1, biome.risk + memoryRisk - prepScore * 0.2);
   const label = risk < 0.25 ? "низкий" : risk < 0.45 ? "средний" : "высокий";
   biomeRisk.textContent = `Риск: ${label}`;
 }
@@ -2809,6 +2939,13 @@ function updateExpeditionPrepUI() {
   toolsPackLabel.textContent = String(gameState.exploration.packs.tools);
   updateBiomeRisk();
   updateBiomeDetails();
+  if (gameState.activeExpedition) {
+    sendExpeditionButton.textContent = "Экспедиция в пути";
+    sendExpeditionButton.disabled = true;
+  } else {
+    sendExpeditionButton.textContent = "Отправить экспедицию";
+    sendExpeditionButton.disabled = false;
+  }
 }
 
 function logExpedition(message) {
@@ -2949,7 +3086,11 @@ function maybeTriggerStoryChoice(biomeId) {
   }
 }
 
-function resolveExpedition() {
+function startExpedition() {
+  if (gameState.activeExpedition) {
+    pushEvent("Экспедиция уже в пути.");
+    return;
+  }
   const biome = getBiomeById(gameState.exploration.selectedBiome);
   if (!biome) return;
   const { team, packs } = gameState.exploration;
@@ -2969,9 +3110,51 @@ function resolveExpedition() {
   gameState.resources.food -= packs.food;
   gameState.resources.water -= packs.water;
   gameState.resources.tools -= packs.tools;
+  const memory = getBiomeMemory(biome.id);
+  memory.lastVisitDay = gameState.day;
+  const baseDuration = 6 + biome.risk * 6 + (memory.depletion ?? 0) * 4;
+  const duration = Math.max(6, baseDuration + Math.random() * 4);
+  const stressPenalty = (memory.depletion ?? 0) * 8 + (memory.hostility ?? 0) * 10;
+  gameState.colonists.slice(0, team).forEach((col) => {
+    col.stress = clamp(col.stress + stressPenalty, 0, 100);
+  });
+  gameState.activeExpedition = {
+    biomeId: biome.id,
+    team,
+    packs,
+    duration,
+    elapsed: 0
+  };
+  logExpedition(`Экспедиция в ${biome.name} отправлена. Возврат через ${duration.toFixed(1)}ч.`);
+  updateExpeditionPrepUI();
+}
 
+function updateActiveExpedition(delta) {
+  if (!gameState.activeExpedition) return;
+  const expedition = gameState.activeExpedition;
+  expedition.elapsed += delta * gameState.speed;
+  if (expedition.elapsed < expedition.duration) return;
+  const biome = getBiomeById(expedition.biomeId);
+  const delayChance = biome ? 0.08 + biome.risk * 0.12 : 0.12;
+  if (Math.random() < delayChance) {
+    const extra = 3 + Math.random() * 4;
+    expedition.duration += extra;
+    logExpedition(`Экспедиция задерживается на ${extra.toFixed(1)}ч из-за трудностей пути.`);
+    return;
+  }
+  resolveExpeditionOutcome(expedition);
+  gameState.activeExpedition = null;
+  updateExpeditionPrepUI();
+}
+
+function resolveExpeditionOutcome(expedition) {
+  const biome = getBiomeById(expedition.biomeId);
+  if (!biome) return;
+  const { team, packs } = expedition;
+  const memory = getBiomeMemory(biome.id);
   const prepScore = (packs.food + packs.water + packs.tools * 2 + team) / 10;
-  const successChance = Math.min(0.85, Math.max(0.2, 0.6 - biome.risk + prepScore * 0.2));
+  const memoryRisk = (memory.depletion ?? 0) * 0.35 + (memory.hostility ?? 0) * 0.45;
+  const successChance = Math.min(0.85, Math.max(0.18, 0.6 - biome.risk - memoryRisk + prepScore * 0.2));
   const roll = Math.random();
   const outcome = roll < successChance ? "success" : roll < successChance + 0.2 ? "partial" : "fail";
 
@@ -2992,32 +3175,49 @@ function resolveExpedition() {
       }
     });
   };
+  const applyMemoryRange = (range) => {
+    if (!Array.isArray(range)) return range;
+    const depletion = clamp(1 - (memory.depletion ?? 0), 0.5, 1);
+    return [Math.max(0, Math.floor(range[0] * depletion)), Math.max(0, Math.floor(range[1] * depletion))];
+  };
 
   if (outcome !== "fail") {
     Object.entries(biome.resources ?? {}).forEach(([resource, range]) => {
-      if (Array.isArray(range)) addLoot(resource, range[0], range[1]);
+      if (Array.isArray(range)) {
+        const adjusted = applyMemoryRange(range);
+        addLoot(resource, adjusted[0], adjusted[1]);
+      }
     });
   }
 
-  if (Math.random() < 0.45) {
-    const hostileEncounter = Math.random() < biome.risk;
-    const mobList = hostileEncounter ? biome.hostileMobs : biome.peacefulMobs;
-    if (mobList?.length) {
-      const mob = mobList[Math.floor(Math.random() * mobList.length)];
-      logExpedition(
-        hostileEncounter ? `Столкновение: ${mob.name}.` : `Наблюдение: ${mob.name}.`
-      );
-      applyReward(mob.loot);
+  const faunaEncounterChance = 0.35 + (memory.hostility ?? 0) * 0.25;
+  if (Math.random() < faunaEncounterChance) {
+    const faunaPool = BIOME_FAUNA[biome.id] ?? [];
+    const available = faunaPool.filter((animal) => (memory.fauna?.[animal.id]?.count ?? 0) > 0);
+    const candidatePool = available.length ? available : faunaPool;
+    if (candidatePool.length) {
+      const animal = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+      if (memory.fauna?.[animal.id]) {
+        memory.fauna[animal.id].count = Math.max(0, memory.fauna[animal.id].count - 1);
+      }
+      const hostileEncounter = animal.aggressive;
+      logExpedition(hostileEncounter ? `Атака: ${animal.name}.` : `Наблюдение: ${animal.name}.`);
+      applyReward(animal.loot);
       if (hostileEncounter) {
         gameState.colonists.slice(0, team).forEach((col) => {
-          col.mood = Math.max(10, col.mood - 3);
-          col.rest = Math.max(0, col.rest - 6);
+          col.mood = Math.max(10, col.mood - 4);
+          col.rest = Math.max(0, col.rest - 8);
+          const injuryChance = packs.tools < 1 ? 0.45 : 0.3;
+          if (Math.random() < injuryChance) {
+            col.injury = clamp(col.injury + 10, 0, 100);
+          }
         });
       }
     }
   }
 
-  if ((outcome === "success" || outcome === "partial") && Math.random() < 0.4) {
+  const secretChance = 0.35 + (memory.depletion ?? 0) * 0.25;
+  if ((outcome === "success" || outcome === "partial") && Math.random() < secretChance) {
     const secret = biome.secrets?.length
       ? biome.secrets[Math.floor(Math.random() * biome.secrets.length)]
       : null;
@@ -3054,6 +3254,7 @@ function resolveExpedition() {
       col.mood = Math.max(10, col.mood - 8);
       col.rest = Math.max(0, col.rest - 20);
       col.stress = clamp((col.stress ?? 0) + 12, 0, 100);
+      col.injury = clamp((col.injury ?? 0) + 12, 0, 100);
     });
   }
 
@@ -3078,6 +3279,10 @@ function resolveExpedition() {
       }
     }
   }
+
+  memory.visits += 1;
+  memory.depletion = clamp((memory.depletion ?? 0) + 0.1 + (outcome === "fail" ? 0.08 : 0), 0, 1);
+  memory.hostility = clamp((memory.hostility ?? 0) + 0.08 + (outcome === "fail" ? 0.1 : 0), 0, 1);
 
   Object.entries(loot).forEach(([resource, amount]) => {
     gameState.resources[resource] = (gameState.resources[resource] ?? 0) + amount;
@@ -3126,7 +3331,7 @@ function updateSelectedUnit() {
     selectedUnitLabel.textContent = "Никто не выбран.";
     return;
   }
-  selectedUnitLabel.textContent = `${unit.name}: ${unit.task} · голод ${unit.hunger.toFixed(0)} · отдых ${unit.rest.toFixed(0)} · стресс ${unit.stress.toFixed(0)}`;
+  selectedUnitLabel.textContent = `${unit.name}: ${unit.task} · голод ${unit.hunger.toFixed(0)} · отдых ${unit.rest.toFixed(0)} · стресс ${unit.stress.toFixed(0)} · травмы ${unit.injury.toFixed(0)}`;
 }
 
 function updateInfoPanel() {
@@ -3168,6 +3373,7 @@ function updateInfoPanel() {
         <li>Отдых: ${data.rest.toFixed(0)}</li>
         <li>Настроение: ${data.mood.toFixed(0)}</li>
         <li>Стресс: ${data.stress.toFixed(0)}</li>
+        <li>Травмы: ${data.injury.toFixed(0)}</li>
       </ul>`;
   } else if (type === "animal") {
     const animal = ANIMALS.find((item) => item.id === data.type);
@@ -3226,7 +3432,7 @@ function showSystemModal(title, body) {
   systemModal.classList.add("show");
 }
 
-const SAVE_VERSION = "0.4.0";
+const SAVE_VERSION = "0.4.1";
 const SAVE_SLOTS = 5;
 
 function getSaveKey(slot) {
@@ -3263,7 +3469,8 @@ function createSavePayload() {
     colonists: gameState.colonists,
     resources: gameState.resources,
     expeditions: {
-      exploration: gameState.exploration
+      exploration: gameState.exploration,
+      active: gameState.activeExpedition
     },
     systems: {
       day: gameState.day,
@@ -3283,7 +3490,8 @@ function createSavePayload() {
       events: gameState.events,
       lastRescueDay: gameState.lastRescueDay,
       dismantleCount: gameState.dismantleCount,
-      dismantleDay: gameState.dismantleDay
+      dismantleDay: gameState.dismantleDay,
+      saveStats: gameState.saveStats
     }
   };
 }
@@ -3359,9 +3567,15 @@ function closeSaveLoadModal() {
 
 function handleSave(slot) {
   try {
+    resetDailySaveLimit();
+    if (gameState.saveStats.count >= gameState.saveStats.maxPerDay) {
+      showSystemModal("Лимит сохранений", "Сегодня больше нельзя сохранять. Попробуйте завтра.");
+      return;
+    }
     const payload = createSavePayload();
     payload.name = saveNameInput.value.trim() || `День ${gameState.day}`;
     localStorage.setItem(getSaveKey(slot), JSON.stringify(payload));
+    gameState.saveStats.count += 1;
     renderSaveSlots("save");
     pushEvent("Игра сохранена.");
   } catch (error) {
@@ -3394,6 +3608,7 @@ function handleLoad(slot) {
     gameState.colonists = data.colonists;
     gameState.resources = data.resources;
     gameState.exploration = data.expeditions?.exploration ?? gameState.exploration;
+    gameState.activeExpedition = data.expeditions?.active ?? null;
     gameState.day = data.systems.day;
     gameState.time = data.systems.time;
     gameState.speed = data.systems.speed;
@@ -3412,6 +3627,7 @@ function handleLoad(slot) {
     gameState.lastRescueDay = data.systems.lastRescueDay ?? 0;
     gameState.dismantleCount = data.systems.dismantleCount ?? 0;
     gameState.dismantleDay = data.systems.dismantleDay ?? 0;
+    gameState.saveStats = data.systems.saveStats ?? { day: gameState.day, count: 0, maxPerDay: 3 };
     gameState.started = true;
     gameState.selectedObject = null;
     gameState.selectedColonistId = null;
@@ -3643,7 +3859,7 @@ document.querySelectorAll("[data-step]").forEach((button) => {
   });
 });
 
-sendExpeditionButton.addEventListener("click", () => resolveExpedition());
+sendExpeditionButton.addEventListener("click", () => startExpedition());
 
 function renderLoop() {
   if (gameState.started) {
