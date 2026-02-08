@@ -173,7 +173,10 @@ const gameState = {
   pendingDismantle: null,
   selectedObject: null,
   animalSpawnTimer: 0,
-  pendingStartMode: null
+  pendingStartMode: null,
+  buildCategory: "basic",
+  hoverTile: null,
+  hoverBuildId: null
 };
 
 const camera = {
@@ -486,15 +489,43 @@ function findClosestDismantle(fromX, fromY) {
 
 function canWalk(x, y) {
   if (x < 0 || y < 0 || x >= MAP_SIZE || y >= MAP_SIZE) return false;
-  return gameState.map[x][y].terrain !== "water";
+  if (gameState.map[x][y].terrain === "water") return false;
+  const blockingStructure = gameState.structures.find((structure) => {
+    if (!occupiesTile(structure, x, y)) return false;
+    const def = BUILDING_DEFS[structure.type];
+    return def?.blocksMovement;
+  });
+  return !blockingStructure;
+}
+
+function getFootprint(entity) {
+  const def = BUILDING_DEFS[entity.type] ?? BUILDING_DEFS[entity.buildType] ?? null;
+  const size = entity.size ?? def?.size ?? { w: 1, h: 1 };
+  return { w: size.w ?? 1, h: size.h ?? 1 };
+}
+
+function occupiesTile(entity, x, y) {
+  const { w, h } = getFootprint(entity);
+  return x >= entity.x && y >= entity.y && x < entity.x + w && y < entity.y + h;
+}
+
+function canBuildArea(x, y, w = 1, h = 1) {
+  for (let dx = 0; dx < w; dx += 1) {
+    for (let dy = 0; dy < h; dy += 1) {
+      const tx = x + dx;
+      const ty = y + dy;
+      if (!canWalk(tx, ty)) return false;
+      const occupiedByStructure = gameState.structures.some((structure) => occupiesTile(structure, tx, ty));
+      const occupiedByNode = gameState.nodes.some((node) => node.x === tx && node.y === ty && node.amount > 0);
+      const occupiedByOrder = gameState.buildOrders.some((order) => occupiesTile(order, tx, ty));
+      if (occupiedByStructure || occupiedByNode || occupiedByOrder) return false;
+    }
+  }
+  return true;
 }
 
 function canBuild(x, y) {
-  if (!canWalk(x, y)) return false;
-  const occupiedByStructure = gameState.structures.some((structure) => structure.x === x && structure.y === y);
-  const occupiedByNode = gameState.nodes.some((node) => node.x === x && node.y === y && node.amount > 0);
-  const occupiedByOrder = gameState.buildOrders.some((order) => order.x === x && order.y === y);
-  return !occupiedByStructure && !occupiedByNode && !occupiedByOrder;
+  return canBuildArea(x, y, 1, 1);
 }
 
 function moveTowards(colonist, targetX, targetY) {
@@ -532,16 +563,33 @@ function getDropoffTarget(colonist) {
   return camp ?? { x: 14, y: 14 };
 }
 
+function findClosestStructure(type, fromX, fromY) {
+  const candidates = gameState.structures.filter((structure) => structure.type === type);
+  if (candidates.length === 0) return null;
+  return candidates.reduce((closest, current) => {
+    const distance = Math.abs(current.x - fromX) + Math.abs(current.y - fromY);
+    return distance < closest.distance ? { ...current, distance } : closest;
+  }, { ...candidates[0], distance: Infinity });
+}
+
+function getStructureAt(x, y, type) {
+  return gameState.structures.find(
+    (structure) => structure.type === type && occupiesTile(structure, x, y)
+  );
+}
+
 function assignTask(colonist) {
   if (colonist.hunger < 35 && gameState.resources.food > 0) {
     colonist.task = "eat";
-    colonist.goal = { x: 14, y: 14 };
+    const table = findClosestStructure("table", colonist.x, colonist.y);
+    colonist.goal = table ? { x: table.x, y: table.y } : { x: 14, y: 14 };
     return;
   }
   if (colonist.rest < 30) {
+    const bed = findClosestStructure("bed", colonist.x, colonist.y);
     const camp = gameState.structures.find((structure) => structure.type === "camp");
     colonist.task = "rest";
-    colonist.goal = camp ? { x: camp.x, y: camp.y } : { x: 14, y: 14 };
+    colonist.goal = bed ? { x: bed.x, y: bed.y } : camp ? { x: camp.x, y: camp.y } : { x: 14, y: 14 };
     return;
   }
   if (colonist.carry) {
@@ -597,14 +645,17 @@ function handleTask(colonist, delta) {
       if (gameState.resources.food > 0) {
         gameState.resources.food -= 1;
         colonist.hunger = Math.min(100, colonist.hunger + 45);
-        colonist.mood = Math.min(100, colonist.mood + 5);
+        const hasTable = getStructureAt(colonist.x, colonist.y, "table");
+        colonist.mood = Math.min(100, colonist.mood + (hasTable ? 8 : 5));
       }
       colonist.task = "idle";
       colonist.goal = null;
       break;
     }
     case "rest": {
-      colonist.rest = Math.min(100, colonist.rest + 30 * delta);
+      const hasBed = getStructureAt(colonist.x, colonist.y, "bed");
+      const restBoost = hasBed ? 1.3 : 1;
+      colonist.rest = Math.min(100, colonist.rest + 30 * delta * restBoost);
       if (colonist.rest > 90) {
         colonist.task = "idle";
         colonist.goal = null;
@@ -836,6 +887,8 @@ const BUILDING_DEFS = {
   camp: {
     label: "лагерь",
     description: "Базовая точка отдыха и сбора.",
+    category: "basic",
+    size: { w: 1, h: 1 },
     cost: { wood: 10 },
     work: 6,
     salvage: { wood: 6 }
@@ -843,6 +896,8 @@ const BUILDING_DEFS = {
   stockpile: {
     label: "склад",
     description: "Хранение ресурсов и удобный дроп-офф.",
+    category: "basic",
+    size: { w: 1, h: 1 },
     cost: { wood: 12 },
     work: 7,
     salvage: { wood: 7 }
@@ -850,6 +905,8 @@ const BUILDING_DEFS = {
   workshop: {
     label: "мастерская",
     description: "Производство инструментов.",
+    category: "basic",
+    size: { w: 1, h: 1 },
     cost: { wood: 8, stone: 6 },
     work: 8,
     salvage: { wood: 4, stone: 3 }
@@ -857,6 +914,8 @@ const BUILDING_DEFS = {
   farm: {
     label: "ферма",
     description: "Пассивная еда с таймером.",
+    category: "basic",
+    size: { w: 2, h: 2 },
     cost: { wood: 6, food: 4 },
     work: 6,
     salvage: { wood: 3 }
@@ -864,6 +923,8 @@ const BUILDING_DEFS = {
   well: {
     label: "колодец",
     description: "Пассивная вода.",
+    category: "basic",
+    size: { w: 1, h: 1 },
     cost: { wood: 8, stone: 4 },
     work: 6,
     salvage: { wood: 3, stone: 2 }
@@ -871,6 +932,8 @@ const BUILDING_DEFS = {
   lumberyard: {
     label: "лесопилка",
     description: "Пассивная древесина.",
+    category: "basic",
+    size: { w: 2, h: 2 },
     cost: { wood: 10, stone: 4 },
     work: 7,
     salvage: { wood: 5, stone: 2 }
@@ -878,6 +941,8 @@ const BUILDING_DEFS = {
   quarry: {
     label: "карьер",
     description: "Пассивный камень.",
+    category: "basic",
+    size: { w: 2, h: 2 },
     cost: { wood: 8, stone: 10 },
     work: 8,
     salvage: { wood: 4, stone: 5 }
@@ -885,9 +950,97 @@ const BUILDING_DEFS = {
   beacon: {
     label: "маяк",
     description: "Сюжетное здание для сигнала.",
+    category: "basic",
+    size: { w: 1, h: 1 },
     cost: { wood: 10, stone: 10, tools: 2 },
     work: 12,
     salvage: { wood: 5, stone: 5 }
+  },
+  wall: {
+    label: "стена",
+    description: "Прочная преграда, блокирует проход.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    blocksMovement: true,
+    cost: { stone: 4 },
+    work: 4,
+    salvage: { stone: 2 }
+  },
+  fence: {
+    label: "ограждение",
+    description: "Лёгкая преграда, не мешает обзору.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    cost: { wood: 4 },
+    work: 3,
+    salvage: { wood: 2 }
+  },
+  gate: {
+    label: "ворота",
+    description: "Проход через ограждения.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6, stone: 2 },
+    work: 4,
+    salvage: { wood: 3, stone: 1 }
+  },
+  bed: {
+    label: "кровать",
+    description: "Повышает комфорт отдыха.",
+    category: "furniture",
+    size: { w: 2, h: 1 },
+    cost: { wood: 6, food: 2 },
+    work: 5,
+    salvage: { wood: 3 }
+  },
+  table: {
+    label: "стол",
+    description: "Повышает комфорт при еде.",
+    category: "furniture",
+    size: { w: 2, h: 1 },
+    cost: { wood: 6 },
+    work: 4,
+    salvage: { wood: 3 }
+  },
+  chair: {
+    label: "стул",
+    description: "Минимальная мебель для отдыха.",
+    category: "furniture",
+    size: { w: 1, h: 1 },
+    cost: { wood: 3 },
+    work: 3,
+    salvage: { wood: 1 }
+  },
+  torch: {
+    label: "факел",
+    description: "Освещает соседние клетки.",
+    category: "lights",
+    size: { w: 1, h: 1 },
+    cost: { wood: 4, tools: 1 },
+    work: 3,
+    salvage: { wood: 2 },
+    lightRadius: 2.2,
+    lightColor: "rgba(255, 183, 92, 0.45)"
+  },
+  lamp: {
+    label: "лампа",
+    description: "Яркий источник света.",
+    category: "lights",
+    size: { w: 1, h: 1 },
+    cost: { wood: 4, stone: 2, tools: 2 },
+    work: 5,
+    salvage: { wood: 2, stone: 1 },
+    lightRadius: 3.2,
+    lightColor: "rgba(180, 210, 255, 0.4)"
+  },
+  banner: {
+    label: "знамя",
+    description: "Декор повышает мораль.",
+    category: "decor",
+    size: { w: 1, h: 1 },
+    cost: { wood: 2, food: 2 },
+    work: 3,
+    salvage: { wood: 1 }
   }
 };
 
@@ -990,6 +1143,14 @@ function update(delta) {
 
   for (const colonist of gameState.colonists) {
     updateNeeds(colonist, delta);
+    const daylight = getDaylightFactor();
+    if (daylight < 0.5) {
+      if (isLitAt(colonist.x, colonist.y)) {
+        colonist.mood = Math.min(100, colonist.mood + 0.1 * delta);
+      } else {
+        colonist.mood = Math.max(10, colonist.mood - 0.2 * delta);
+      }
+    }
     if (colonist.task === "idle") {
       assignTask(colonist);
     }
@@ -1126,6 +1287,7 @@ function drawAnimal(animal) {
 
 function drawStructure(structure) {
   const { x: screenX, y: screenY } = gridToScreen(structure.x, structure.y);
+  const { w, h } = getFootprint(structure);
   const palette = {
     camp: "#d1a94b",
     stockpile: "#88b2b8",
@@ -1135,20 +1297,37 @@ function drawStructure(structure) {
     lumberyard: "#8b6b4a",
     quarry: "#707070",
     watch: "#8a7bd1",
-    beacon: "#f0b35d"
+    beacon: "#f0b35d",
+    wall: "#6e7076",
+    fence: "#8f6b4a",
+    gate: "#a57b52",
+    bed: "#8aa4c8",
+    table: "#a57b52",
+    chair: "#8f6b4a",
+    torch: "#e07a45",
+    lamp: "#78a6d8",
+    banner: "#b36a8b"
   };
   const base = palette[structure.type] ?? "#d1a94b";
   ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
   ctx.beginPath();
-  ctx.ellipse(screenX + 16, screenY + 24, 12, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(
+    screenX + (w * TILE_SIZE) / 2,
+    screenY + h * TILE_SIZE - 8,
+    12 + (w - 1) * 8,
+    4 + (h - 1) * 3,
+    0,
+    0,
+    Math.PI * 2
+  );
   ctx.fill();
   ctx.fillStyle = base;
-  ctx.fillRect(screenX + 5, screenY + 8, TILE_SIZE - 10, TILE_SIZE - 12);
+  ctx.fillRect(screenX + 5, screenY + 8, TILE_SIZE * w - 10, TILE_SIZE * h - 12);
 
   ctx.fillStyle = "rgba(10, 14, 20, 0.22)";
-  ctx.fillRect(screenX + 7, screenY + 20, TILE_SIZE - 14, 4);
+  ctx.fillRect(screenX + 7, screenY + 20, TILE_SIZE * w - 14, 4);
   ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
-  ctx.fillRect(screenX + 6, screenY + 10, TILE_SIZE - 12, 3);
+  ctx.fillRect(screenX + 6, screenY + 10, TILE_SIZE * w - 12, 3);
 
   if (structure.type === "camp") {
     ctx.fillStyle = "#f2f1e6";
@@ -1250,12 +1429,93 @@ function drawColonist(colonist) {
 function drawOrders() {
   for (const order of gameState.buildOrders) {
     const { x: screenX, y: screenY } = gridToScreen(order.x, order.y);
+    const { w, h } = getFootprint(order);
     const pulse = 0.5 + 0.5 * Math.sin((gameState.time + order.x + order.y) * 0.8);
     ctx.strokeStyle = `rgba(95, 225, 255, ${0.4 + pulse * 0.4})`;
     ctx.setLineDash([4, 4]);
-    ctx.strokeRect(screenX + 3, screenY + 3, TILE_SIZE - 6, TILE_SIZE - 6);
+    ctx.strokeRect(screenX + 3, screenY + 3, TILE_SIZE * w - 6, TILE_SIZE * h - 6);
     ctx.setLineDash([]);
   }
+}
+
+function drawBuildPreview() {
+  if (gameState.selectedTab !== "build" || gameState.buildMode !== "build") return;
+  if (!gameState.hoverTile) return;
+  const def = BUILDING_DEFS[gameState.selectedBuild];
+  if (!def) return;
+  const { w, h } = def.size ?? { w: 1, h: 1 };
+  const canPlace = canBuildArea(gameState.hoverTile.x, gameState.hoverTile.y, w, h);
+  const fill = canPlace ? "rgba(52, 211, 153, 0.2)" : "rgba(248, 113, 113, 0.25)";
+  const stroke = canPlace ? "rgba(52, 211, 153, 0.6)" : "rgba(248, 113, 113, 0.6)";
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  for (let dx = 0; dx < w; dx += 1) {
+    for (let dy = 0; dy < h; dy += 1) {
+      const { x: sx, y: sy } = gridToScreen(gameState.hoverTile.x + dx, gameState.hoverTile.y + dy);
+      ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+      ctx.strokeRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+    }
+  }
+}
+
+function getDaylightFactor() {
+  const t = gameState.time;
+  if (t < 6) return 0.15 + (t / 6) * 0.35;
+  if (t < 8) return lerp(0.5, 1, (t - 6) / 2);
+  if (t < 18) return 1;
+  if (t < 20) return lerp(1, 0.45, (t - 18) / 2);
+  return lerp(0.45, 0.2, (t - 20) / 4);
+}
+
+function isLitAt(x, y) {
+  return gameState.structures.some((structure) => {
+    const def = BUILDING_DEFS[structure.type];
+    if (!def?.lightRadius) return false;
+    const { w, h } = getFootprint(structure);
+    const cx = structure.x + w / 2;
+    const cy = structure.y + h / 2;
+    const dist = Math.abs(cx - x) + Math.abs(cy - y);
+    return dist <= def.lightRadius;
+  });
+}
+
+function drawLightingOverlay() {
+  const daylight = getDaylightFactor();
+  const darkness = clamp(1 - daylight, 0, 0.8);
+  if (darkness <= 0.02) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = `rgba(6, 10, 18, ${darkness})`;
+  ctx.fillRect(0, 0, camera.viewWidth, camera.viewHeight);
+  ctx.globalCompositeOperation = "lighter";
+  for (const structure of gameState.structures) {
+    const def = BUILDING_DEFS[structure.type];
+    if (!def?.lightRadius) continue;
+    const { w, h } = getFootprint(structure);
+    const center = gridToScreen(structure.x + w / 2, structure.y + h / 2);
+    const radius = def.lightRadius * TILE_SIZE * gameState.zoom;
+    const gradient = ctx.createRadialGradient(
+      center.x * gameState.zoom + camera.offsetX,
+      center.y * gameState.zoom + camera.offsetY,
+      0,
+      center.x * gameState.zoom + camera.offsetX,
+      center.y * gameState.zoom + camera.offsetY,
+      radius
+    );
+    gradient.addColorStop(0, def.lightColor ?? "rgba(255, 200, 120, 0.4)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(
+      center.x * gameState.zoom + camera.offsetX,
+      center.y * gameState.zoom + camera.offsetY,
+      radius,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function render() {
@@ -1275,6 +1535,7 @@ function render() {
     }
   }
 
+  drawBuildPreview();
   for (const node of gameState.nodes) {
     if (node.amount > 0) drawResource(node);
   }
@@ -1289,6 +1550,7 @@ function render() {
     drawColonist(colonist);
   }
   ctx.restore();
+  drawLightingOverlay();
 }
 
 function updateHud() {
@@ -1370,7 +1632,7 @@ function selectResourceAt(tile) {
 }
 
 function selectStructureAt(tile) {
-  const structure = gameState.structures.find((item) => item.x === tile.x && item.y === tile.y);
+  const structure = gameState.structures.find((item) => occupiesTile(item, tile.x, tile.y));
   if (structure) {
     gameState.selectedObject = { type: "structure", data: structure };
     return true;
@@ -1380,7 +1642,7 @@ function selectStructureAt(tile) {
 
 function handleBuildClick(tile) {
   if (gameState.buildMode === "dismantle") {
-    const structure = gameState.structures.find((item) => item.x === tile.x && item.y === tile.y);
+    const structure = gameState.structures.find((item) => occupiesTile(item, tile.x, tile.y));
     if (!structure) {
       pushEvent("Здесь нечего разбирать.");
       return;
@@ -1408,7 +1670,9 @@ function handleBuildClick(tile) {
     dismantleModal.classList.add("show");
     return;
   }
-  if (!canBuild(tile.x, tile.y)) {
+  const definition = BUILDING_DEFS[gameState.selectedBuild];
+  const footprint = definition?.size ?? { w: 1, h: 1 };
+  if (!canBuildArea(tile.x, tile.y, footprint.w, footprint.h)) {
     if (gameState.buildMode === "dismantle") {
       const structure = gameState.structures.find((item) => item.x === tile.x && item.y === tile.y);
       if (!structure) {
@@ -1423,7 +1687,6 @@ function handleBuildClick(tile) {
     pushEvent("Выберите постройку для разбора.");
     return;
   }
-  const definition = BUILDING_DEFS[gameState.selectedBuild];
   if (!definition) return;
   for (const [resource, amount] of Object.entries(definition.cost)) {
     if (gameState.resources[resource] < amount) {
@@ -1439,7 +1702,8 @@ function handleBuildClick(tile) {
     y: tile.y,
     cost: definition.work,
     progress: 0,
-    type: gameState.selectedBuild
+    type: gameState.selectedBuild,
+    size: { ...footprint }
   });
   pushEvent(`Создан заказ на ${definition.label}.`);
 }
@@ -1471,7 +1735,7 @@ function handleCommandClick(tile) {
     return;
   }
   if (gameState.commandMode === "build") {
-    const order = gameState.buildOrders.find((item) => item.x === tile.x && item.y === tile.y);
+    const order = gameState.buildOrders.find((item) => occupiesTile(item, tile.x, tile.y));
     if (order) {
       colonist.task = "deliver";
       colonist.goal = { x: order.x, y: order.y };
@@ -1565,6 +1829,8 @@ canvas.addEventListener("wheel", (event) => {
 const tabs = document.querySelectorAll(".tab");
 const panels = document.querySelectorAll(".panel-section[data-panel]");
 const buildOptions = document.querySelectorAll(".build-option");
+const buildSubtabs = document.querySelectorAll(".build-subtab");
+const buildCategories = document.querySelectorAll(".build-category");
 const tasksList = document.getElementById("tasks");
 const ordersList = document.getElementById("orders");
 const commandOptions = document.querySelectorAll(".command-option");
@@ -1590,6 +1856,27 @@ buildOptions.forEach((option) => {
     buildOptions.forEach((btn) => btn.classList.remove("active"));
     option.classList.add("active");
     gameState.selectedBuild = option.dataset.build;
+  });
+  option.addEventListener("mouseenter", () => {
+    gameState.hoverBuildId = option.dataset.build;
+  });
+  option.addEventListener("mouseleave", () => {
+    gameState.hoverBuildId = null;
+  });
+});
+
+buildSubtabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const next = tab.dataset.category;
+    buildSubtabs.forEach((btn) => btn.classList.toggle("active", btn.dataset.category === next));
+    buildCategories.forEach((group) => group.classList.toggle("active", group.dataset.category === next));
+    gameState.buildCategory = next;
+    const firstOption = document.querySelector(`.build-category[data-category="${next}"] .build-option`);
+    if (firstOption) {
+      buildOptions.forEach((btn) => btn.classList.remove("active"));
+      firstOption.classList.add("active");
+      gameState.selectedBuild = firstOption.dataset.build;
+    }
   });
 });
 
@@ -1948,6 +2235,24 @@ function updateSelectedUnit() {
 }
 
 function updateInfoPanel() {
+  if (gameState.hoverBuildId && gameState.selectedTab === "build") {
+    const def = BUILDING_DEFS[gameState.hoverBuildId];
+    if (def) {
+      const cost = Object.entries(def.cost ?? {})
+        .map(([resource, amount]) => `${resource}: ${amount}`)
+        .join(", ");
+      const size = def.size ? `${def.size.w}x${def.size.h}` : "1x1";
+      infoPanel.innerHTML = `<h4>${def.label}</h4>
+        <p>Постройка · ${def.category}</p>
+        <p class="muted">${def.description ?? "Нет данных."}</p>
+        <ul>
+          <li>Размер: ${size}</li>
+          <li>Ресурсы: ${cost || "—"}</li>
+          ${def.lightRadius ? `<li>Свет: радиус ${def.lightRadius}</li>` : ""}
+        </ul>`;
+      return;
+    }
+  }
   if (!gameState.selectedObject) {
     infoPanel.innerHTML = `<p class="muted">Выберите объект, чтобы увидеть детали.</p>`;
     return;
@@ -2129,6 +2434,21 @@ canvas.addEventListener("mousedown", (event) => {
     panMoved = false;
     lastPan = { x: event.clientX, y: event.clientY };
   }
+});
+
+canvas.addEventListener("mousemove", (event) => {
+  if (isPanning) return;
+  const position = getMousePosition(event);
+  const tile = screenToGrid(position.x, position.y);
+  if (tile.x < 0 || tile.y < 0 || tile.x >= MAP_SIZE || tile.y >= MAP_SIZE) {
+    gameState.hoverTile = null;
+    return;
+  }
+  gameState.hoverTile = tile;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  gameState.hoverTile = null;
 });
 
 window.addEventListener("mouseup", () => {
