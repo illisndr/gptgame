@@ -66,6 +66,9 @@
             <h2>Постройки</h2>
             <p>Выбери постройку и кликни по карте.</p>
             <div class="build-grid">
+              <button id="toggle-dismantle">Режим: строительство</button>
+            </div>
+            <div class="build-grid">
               <button class="build-option active" data-build="camp">
                 <span>Лагерь</span>
                 <small>10 дерева</small>
@@ -208,6 +211,16 @@
         <div class="modal-actions">
           <button id="choice-a">Вариант А</button>
           <button id="choice-b">Вариант Б</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal" id="dismantle-modal">
+      <div class="modal-card">
+        <h2>Разобрать постройку?</h2>
+        <p id="dismantle-body"></p>
+        <div class="modal-actions">
+          <button id="dismantle-confirm">Разобрать</button>
+          <button id="dismantle-cancel">Отмена</button>
         </div>
       </div>
     </div>
