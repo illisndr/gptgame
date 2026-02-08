@@ -1392,6 +1392,15 @@ canvas.addEventListener("click", (event) => {
   const position = getMousePosition(event);
   const tile = screenToGrid(position.x, position.y);
   if (tile.x < 0 || tile.y < 0 || tile.x >= MAP_SIZE || tile.y >= MAP_SIZE) return;
+  if (selectColonistAt(tile)) return;
+  if (gameState.selectedTab === "units" && gameState.selectedColonistId && gameState.commandMode !== "idle") {
+    handleCommandClick(tile);
+    return;
+  }
+  if (gameState.selectedTab === "build") {
+    handleBuildClick(tile);
+    return;
+  }
   if (selectAnimalAt(tile)) {
     return;
   }
@@ -1399,11 +1408,6 @@ canvas.addEventListener("click", (event) => {
     return;
   }
   if (selectStructureAt(tile)) {
-    return;
-  }
-  if (selectColonistAt(tile)) return;
-  if (gameState.selectedTab === "build") {
-    handleBuildClick(tile);
     return;
   }
   if (gameState.selectedTab === "units") {
