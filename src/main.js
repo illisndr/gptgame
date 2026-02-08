@@ -589,7 +589,8 @@ function createColonist(data, x, y) {
     carry: null,
     hunger: 100,
     rest: 100,
-    mood: 80
+    mood: 80,
+    stress: 5
   };
 }
 
@@ -700,6 +701,12 @@ function moveTowards(colonist, targetX, targetY) {
 function updateNeeds(colonist, delta) {
   colonist.hunger = Math.max(0, colonist.hunger - 0.7 * delta * colonist.modifiers.hungerRate);
   colonist.rest = Math.max(0, colonist.rest - 0.5 * delta / colonist.modifiers.restRate);
+  const stressGain =
+    (colonist.hunger < 35 ? 0.45 : 0) +
+    (colonist.rest < 35 ? 0.45 : 0) +
+    (colonist.mood < 35 ? 0.3 : 0);
+  const stressRelief = colonist.hunger > 70 && colonist.rest > 70 ? 0.25 : 0.1;
+  colonist.stress = clamp(colonist.stress + (stressGain - stressRelief) * delta, 0, 100);
   if (colonist.hunger < 20 || colonist.rest < 20) {
     colonist.mood = Math.max(10, colonist.mood - 0.4 * delta);
   } else {
@@ -963,11 +970,38 @@ function updateStory() {
   }
 }
 
-function updateStructures(delta) {
+function updateStructures(delta, productionBoost = 1) {
+  const productionDelta = delta * productionBoost;
   for (const structure of gameState.structures) {
+    const upkeep = getStructureUpkeep(structure);
+    if (upkeep) {
+      structure.upkeepTimer = (structure.upkeepTimer ?? 0) + delta;
+      if (structure.upkeepTimer >= 24) {
+        structure.upkeepTimer = 0;
+        const canPay = Object.entries(upkeep).every(
+          ([resource, amount]) => (gameState.resources[resource] ?? 0) >= amount
+        );
+        if (canPay) {
+          Object.entries(upkeep).forEach(([resource, amount]) => {
+            gameState.resources[resource] -= amount;
+          });
+          if (structure.disabled) {
+            structure.disabled = false;
+            pushEvent(
+              `"${BUILDING_DEFS[structure.type]?.label ?? structure.type}" снова работает после обслуживания.`
+            );
+          }
+        } else if (!structure.disabled) {
+          structure.disabled = true;
+          pushEvent(
+            `"${BUILDING_DEFS[structure.type]?.label ?? structure.type}" остановлен(а): не хватает ресурсов на обслуживание.`
+          );
+        }
+      }
+    }
     if (structure.disabled) continue;
     if (structure.type === "farm") {
-      structure.timer = (structure.timer ?? 0) + delta;
+      structure.timer = (structure.timer ?? 0) + productionDelta;
       if (structure.timer >= 20) {
         structure.timer = 0;
         gameState.resources.food += 2;
@@ -975,120 +1009,120 @@ function updateStructures(delta) {
       }
     }
     if (structure.type === "well") {
-      structure.timer = (structure.timer ?? 0) + delta;
+      structure.timer = (structure.timer ?? 0) + productionDelta;
       if (structure.timer >= 18) {
         structure.timer = 0;
         gameState.resources.water += 2;
         pushEvent("Колодец дал воду (+2).");
       }
     }
-  if (structure.type === "lumberyard") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 22) {
-      structure.timer = 0;
-      gameState.resources.wood += 3;
-      pushEvent("Лесопилка произвела дерево (+3).");
+    if (structure.type === "lumberyard") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 22) {
+        structure.timer = 0;
+        gameState.resources.wood += 3;
+        pushEvent("Лесопилка произвела дерево (+3).");
+      }
     }
-  }
-  if (structure.type === "quarry") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 26) {
-      structure.timer = 0;
-      gameState.resources.stone += 3;
-      pushEvent("Карьер дал камень (+3).");
+    if (structure.type === "quarry") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 26) {
+        structure.timer = 0;
+        gameState.resources.stone += 3;
+        pushEvent("Карьер дал камень (+3).");
+      }
     }
-  }
-  if (structure.type === "greenhouse") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 24) {
-      structure.timer = 0;
-      gameState.resources.food += 2;
-      pushEvent("Оранжерея дала урожай (+2 еды).");
+    if (structure.type === "greenhouse") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 24) {
+        structure.timer = 0;
+        gameState.resources.food += 2;
+        pushEvent("Оранжерея дала урожай (+2 еды).");
+      }
     }
-  }
-  if (structure.type === "kitchen") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 20) {
-      structure.timer = 0;
-      gameState.resources.food += 1;
-      pushEvent("Кухня улучшила пайки (+1 еды).");
+    if (structure.type === "kitchen") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 20) {
+        structure.timer = 0;
+        gameState.resources.food += 1;
+        pushEvent("Кухня улучшила пайки (+1 еды).");
+      }
     }
-  }
-  if (structure.type === "sauna") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 30) {
-      structure.timer = 0;
-      gameState.colonists.forEach((col) => {
-        col.rest = Math.min(100, col.rest + 4);
-        col.mood = Math.min(100, col.mood + 2);
-      });
-      pushEvent("Сауна подняла настроение и отдых.");
-    }
-  }
-  if (structure.type === "infirmary") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 28) {
-      structure.timer = 0;
-      gameState.colonists.forEach((col) => {
-        col.rest = Math.min(100, col.rest + 5);
-      });
-      pushEvent("Лазарет ускорил восстановление.");
-    }
-  }
-  if (structure.type === "hunting-lodge") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 26) {
-      structure.timer = 0;
-      gameState.resources.food += 1;
-      pushEvent("Охотничий домик дал провизию (+1 еды).");
-    }
-  }
-  if (structure.type === "corral") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 32) {
-      structure.timer = 0;
-      gameState.resources.food += 1;
-      pushEvent("Загон дал припасы (+1 еды).");
-    }
-  }
-  if (structure.type === "herbalist") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 26) {
-      structure.timer = 0;
-      if (gameState.resources["medicinal-herbs"] > 0) {
-        gameState.resources["medicinal-herbs"] -= 1;
+    if (structure.type === "sauna") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 30) {
+        structure.timer = 0;
         gameState.colonists.forEach((col) => {
-          col.mood = Math.min(100, col.mood + 3);
-          col.rest = Math.min(100, col.rest + 3);
+          col.rest = Math.min(100, col.rest + 4);
+          col.mood = Math.min(100, col.mood + 2);
         });
-        pushEvent("Травник приготовил настой (+мораль, отдых).");
+        pushEvent("Сауна подняла настроение и отдых.");
+      }
+    }
+    if (structure.type === "infirmary") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 28) {
+        structure.timer = 0;
+        gameState.colonists.forEach((col) => {
+          col.rest = Math.min(100, col.rest + 5);
+        });
+        pushEvent("Лазарет ускорил восстановление.");
+      }
+    }
+    if (structure.type === "hunting-lodge") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 26) {
+        structure.timer = 0;
+        gameState.resources.food += 1;
+        pushEvent("Охотничий домик дал провизию (+1 еды).");
+      }
+    }
+    if (structure.type === "corral") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 32) {
+        structure.timer = 0;
+        gameState.resources.food += 1;
+        pushEvent("Загон дал припасы (+1 еды).");
+      }
+    }
+    if (structure.type === "herbalist") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 26) {
+        structure.timer = 0;
+        if (gameState.resources["medicinal-herbs"] > 0) {
+          gameState.resources["medicinal-herbs"] -= 1;
+          gameState.colonists.forEach((col) => {
+            col.mood = Math.min(100, col.mood + 3);
+            col.rest = Math.min(100, col.rest + 3);
+          });
+          pushEvent("Травник приготовил настой (+мораль, отдых).");
+        }
+      }
+    }
+    if (structure.type === "resin-press") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 28) {
+        structure.timer = 0;
+        if (gameState.resources.resin > 0) {
+          gameState.resources.resin -= 1;
+          gameState.resources.tools += 1;
+          pushEvent("Смоляной пресс дал клей (+1 инструмент).");
+        }
+      }
+    }
+    if (structure.type === "smelter") {
+      structure.timer = (structure.timer ?? 0) + productionDelta;
+      if (structure.timer >= 32) {
+        structure.timer = 0;
+        if (gameState.resources.iron > 0 && gameState.resources.minerals > 0) {
+          gameState.resources.iron -= 1;
+          gameState.resources.minerals -= 1;
+          gameState.resources.tools += 1;
+          pushEvent("Плавильня изготовила инструмент.");
+        }
       }
     }
   }
-  if (structure.type === "resin-press") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 28) {
-      structure.timer = 0;
-      if (gameState.resources.resin > 0) {
-        gameState.resources.resin -= 1;
-        gameState.resources.tools += 1;
-        pushEvent("Смоляной пресс дал клей (+1 инструмент).");
-      }
-    }
-  }
-  if (structure.type === "smelter") {
-    structure.timer = (structure.timer ?? 0) + delta;
-    if (structure.timer >= 32) {
-      structure.timer = 0;
-      if (gameState.resources.iron > 0 && gameState.resources.minerals > 0) {
-        gameState.resources.iron -= 1;
-        gameState.resources.minerals -= 1;
-        gameState.resources.tools += 1;
-        pushEvent("Плавильня изготовила инструмент.");
-      }
-    }
-  }
-}
 }
 
 function updateResources(delta) {
@@ -1132,6 +1166,35 @@ function checkRescueEvent() {
     gameState.resources.water += 3;
     pushEvent("Спасатели оставили припасы. Это ваш шанс восстановиться.");
   }
+}
+
+const STRUCTURE_UPKEEP = {
+  camp: { wood: 1 },
+  workshop: { wood: 1 },
+  farm: { water: 1 },
+  well: { wood: 1 },
+  lumberyard: { tools: 1 },
+  quarry: { tools: 1 },
+  kitchen: { food: 1, water: 1 },
+  forge: { wood: 1 },
+  carpenter: { wood: 1 },
+  greenhouse: { water: 1 },
+  pantry: { wood: 1 },
+  infirmary: { water: 1 },
+  sauna: { wood: 1, water: 1 },
+  "hunting-lodge": { food: 1 },
+  corral: { food: 1 },
+  herbalist: { "medicinal-herbs": 1 },
+  "resin-press": { resin: 1 },
+  smelter: { iron: 1 }
+};
+
+function getStructureUpkeepByType(type) {
+  return STRUCTURE_UPKEEP[type];
+}
+
+function getStructureUpkeep(structure) {
+  return getStructureUpkeepByType(structure.type);
 }
 
 const BUILDING_DEFS = {
@@ -1764,6 +1827,15 @@ function resolveHunt(colonist, animal) {
   }
 }
 
+function getWorkEfficiency(colonist, daylight, lit) {
+  const stressPenalty = 1 - Math.min(0.4, colonist.stress / 160);
+  const fatiguePenalty = colonist.rest < 25 ? 0.65 : colonist.rest < 45 ? 0.85 : 1;
+  const hungerPenalty = colonist.hunger < 25 ? 0.7 : colonist.hunger < 45 ? 0.88 : 1;
+  const moodPenalty = colonist.mood < 35 ? 0.85 : 1;
+  const nightPenalty = daylight < 0.5 ? (lit ? 0.9 : 0.7) : 1;
+  return clamp(stressPenalty * fatiguePenalty * hungerPenalty * moodPenalty * nightPenalty, 0.45, 1.1);
+}
+
 function update(delta) {
   if (gameState.paused) return;
   const workBoost = 1 + Math.min(0.25, gameState.resources.tools * 0.02);
@@ -1776,24 +1848,27 @@ function update(delta) {
   }
   tickEvents();
   updateResources(delta);
-  updateStructures(delta * workBoost);
+  updateStructures(delta, workBoost);
   updateAnimals(delta);
   checkRescueEvent();
 
   for (const colonist of gameState.colonists) {
     updateNeeds(colonist, delta);
     const daylight = getDaylightFactor();
+    const lit = isLitAt(colonist.x, colonist.y);
     if (daylight < 0.5) {
       if (isLitAt(colonist.x, colonist.y)) {
         colonist.mood = Math.min(100, colonist.mood + 0.1 * delta);
       } else {
         colonist.mood = Math.max(10, colonist.mood - 0.2 * delta);
+        colonist.stress = clamp(colonist.stress + 0.3 * delta, 0, 100);
       }
     }
     if (colonist.task === "idle") {
       assignTask(colonist);
     }
-    handleTask(colonist, delta * workBoost);
+    const efficiency = getWorkEfficiency(colonist, daylight, lit);
+    handleTask(colonist, delta * workBoost * efficiency);
   }
 }
 
@@ -2250,7 +2325,7 @@ function updateHud() {
   colonistsList.innerHTML = gameState.colonists
     .map(
       (colonist) =>
-        `<li>${colonist.name} (${colonist.role}) — ${colonist.task} · голод ${colonist.hunger.toFixed(0)} · отдых ${colonist.rest.toFixed(0)} · настроение ${colonist.mood.toFixed(0)}</li>`
+        `<li>${colonist.name} (${colonist.role}) — ${colonist.task} · голод ${colonist.hunger.toFixed(0)} · отдых ${colonist.rest.toFixed(0)} · настроение ${colonist.mood.toFixed(0)} · стресс ${colonist.stress.toFixed(0)}</li>`
     )
     .join("");
   eventsList.innerHTML = gameState.events.map((event) => `<li>${event.message}</li>`).join("");
@@ -2401,7 +2476,7 @@ function handleBuildClick(tile) {
   if (!definition) return;
   for (const [resource, amount] of Object.entries(definition.cost)) {
     if (gameState.resources[resource] < amount) {
-      pushEvent(`Недостаточно ${resource} для постройки.`);
+      pushEvent(`Недостаточно ${getResourceLabel(resource)} для постройки.`);
       return;
     }
   }
@@ -2965,13 +3040,37 @@ function resolveExpedition() {
     gameState.colonists.slice(0, team).forEach((col) => {
       col.mood = Math.max(10, col.mood - 4);
       col.rest = Math.max(0, col.rest - 10);
+      col.stress = clamp((col.stress ?? 0) + 6, 0, 100);
     });
   }
   if (outcome === "fail") {
     gameState.colonists.slice(0, team).forEach((col) => {
       col.mood = Math.max(10, col.mood - 8);
       col.rest = Math.max(0, col.rest - 20);
+      col.stress = clamp((col.stress ?? 0) + 12, 0, 100);
     });
+  }
+
+  if (outcome !== "success") {
+    const injuryChance = outcome === "fail" ? 0.35 : 0.18;
+    if (Math.random() < injuryChance) {
+      const injured = gameState.colonists[Math.floor(Math.random() * Math.min(team, gameState.colonists.length))];
+      if (injured) {
+        injured.rest = Math.max(0, injured.rest - 25);
+        injured.mood = Math.max(10, injured.mood - 6);
+        injured.stress = clamp((injured.stress ?? 0) + 15, 0, 100);
+        logExpedition(`Травма в пути: ${injured.name} вернулся(лась) изнурён(а).`);
+      }
+    }
+    if (outcome === "fail" && Math.random() < 0.05 && gameState.colonists.length > 1) {
+      const lostIndex = Math.floor(Math.random() * Math.min(team, gameState.colonists.length));
+      const lost = gameState.colonists[lostIndex];
+      if (lost) {
+        gameState.colonists.splice(lostIndex, 1);
+        logExpedition(`Потеря: ${lost.name} пропал(а) в экспедиции.`);
+        pushEvent(`${lost.name} пропал(а) во время экспедиции.`);
+      }
+    }
   }
 
   Object.entries(loot).forEach(([resource, amount]) => {
@@ -3021,7 +3120,7 @@ function updateSelectedUnit() {
     selectedUnitLabel.textContent = "Никто не выбран.";
     return;
   }
-  selectedUnitLabel.textContent = `${unit.name}: ${unit.task} · голод ${unit.hunger.toFixed(0)} · отдых ${unit.rest.toFixed(0)}`;
+  selectedUnitLabel.textContent = `${unit.name}: ${unit.task} · голод ${unit.hunger.toFixed(0)} · отдых ${unit.rest.toFixed(0)} · стресс ${unit.stress.toFixed(0)}`;
 }
 
 function updateInfoPanel() {
@@ -3032,6 +3131,9 @@ function updateInfoPanel() {
         .map(([resource, amount]) => `${getResourceLabel(resource)}: ${amount}`)
         .join(", ");
       const size = def.size ? `${def.size.w}x${def.size.h}` : "1x1";
+      const upkeep = Object.entries(getStructureUpkeepByType(gameState.hoverBuildId) ?? {})
+        .map(([resource, amount]) => `${getResourceLabel(resource)}: ${amount}`)
+        .join(", ");
       const effects = def.effects?.length ? `<li>Эффекты: ${def.effects.join(", ")}</li>` : "";
       infoPanel.innerHTML = `<h4>${def.label}</h4>
         <p>Постройка · ${def.category}</p>
@@ -3039,6 +3141,7 @@ function updateInfoPanel() {
         <ul>
           <li>Размер: ${size}</li>
           <li>Ресурсы: ${cost || "—"}</li>
+          <li>Обслуживание/день: ${upkeep || "—"}</li>
           ${effects}
           ${def.lightRadius ? `<li>Свет: радиус ${def.lightRadius}</li>` : ""}
         </ul>`;
@@ -3058,6 +3161,7 @@ function updateInfoPanel() {
         <li>Голод: ${data.hunger.toFixed(0)}</li>
         <li>Отдых: ${data.rest.toFixed(0)}</li>
         <li>Настроение: ${data.mood.toFixed(0)}</li>
+        <li>Стресс: ${data.stress.toFixed(0)}</li>
       </ul>`;
   } else if (type === "animal") {
     const animal = ANIMALS.find((item) => item.id === data.type);
@@ -3082,11 +3186,15 @@ function updateInfoPanel() {
   } else if (type === "structure") {
     const def = BUILDING_DEFS[data.type];
     const effects = def?.effects?.length ? `<li>Эффекты: ${def.effects.join(", ")}</li>` : "";
+    const upkeep = Object.entries(getStructureUpkeepByType(data.type) ?? {})
+      .map(([resource, amount]) => `${getResourceLabel(resource)}: ${amount}`)
+      .join(", ");
     infoPanel.innerHTML = `<h4>${def?.label ?? data.type}</h4>
       <p>Постройка</p>
       <p class="muted">${def?.description ?? "Нет данных."}</p>
       <ul>
-        <li>Состояние: ${data.disabled ? "разбирается" : "активна"}</li>
+        <li>Состояние: ${data.disabled ? "остановлена" : "активна"}</li>
+        <li>Обслуживание/день: ${upkeep || "—"}</li>
         ${effects}
       </ul>`;
   }
