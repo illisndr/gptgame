@@ -1089,6 +1089,7 @@ function updateStructures(delta) {
     }
   }
 }
+}
 
 function updateResources(delta) {
   for (const node of gameState.nodes) {
