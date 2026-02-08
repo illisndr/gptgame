@@ -70,7 +70,9 @@
               <button class="build-subtab" data-category="walls">Стены</button>
               <button class="build-subtab" data-category="furniture">Мебель</button>
               <button class="build-subtab" data-category="lights">Свет</button>
+              <button class="build-subtab" data-category="functional">Функциональные</button>
               <button class="build-subtab" data-category="decor">Декор</button>
+              <button class="build-subtab" data-category="infrastructure">Инфраструктура</button>
             </div>
             <div class="build-grid">
               <button id="toggle-dismantle">Режим: строительство</button>
@@ -110,17 +112,41 @@
               </button>
             </div>
             <div class="build-grid build-category" data-category="walls">
-              <button class="build-option" data-build="wall">
-                <span>Стена</span>
+              <button class="build-option" data-build="wood-wall">
+                <span>Дерев. стена</span>
+                <small>4 дерева</small>
+              </button>
+              <button class="build-option" data-build="stone-wall">
+                <span>Каменная стена</span>
                 <small>4 камня</small>
+              </button>
+              <button class="build-option" data-build="palisade">
+                <span>Палисад</span>
+                <small>6 дерева</small>
               </button>
               <button class="build-option" data-build="fence">
                 <span>Ограждение</span>
-                <small>4 дерева</small>
+                <small>3 дерева</small>
+              </button>
+              <button class="build-option" data-build="stone-fence">
+                <span>Кам. ограда</span>
+                <small>3 камня</small>
+              </button>
+              <button class="build-option" data-build="decor-fence">
+                <span>Декор-ограда</span>
+                <small>2 дерева · 1 камень</small>
               </button>
               <button class="build-option" data-build="gate">
                 <span>Ворота</span>
                 <small>6 дерева · 2 камня</small>
+              </button>
+              <button class="build-option" data-build="arch-gate">
+                <span>Арка-ворота</span>
+                <small>4 камня · 1 инструмент</small>
+              </button>
+              <button class="build-option" data-build="light-fence">
+                <span>Световая ограда</span>
+                <small>3 дерева · 1 инструмент</small>
               </button>
             </div>
             <div class="build-grid build-category" data-category="furniture">
@@ -136,6 +162,26 @@
                 <span>Стул</span>
                 <small>3 дерева</small>
               </button>
+              <button class="build-option" data-build="wardrobe">
+                <span>Шкаф</span>
+                <small>6 дерева</small>
+              </button>
+              <button class="build-option" data-build="chest">
+                <span>Сундук</span>
+                <small>4 дерева · 1 инструмент</small>
+              </button>
+              <button class="build-option" data-build="carpet">
+                <span>Ковер</span>
+                <small>2 дерева · 2 еды</small>
+              </button>
+              <button class="build-option" data-build="painting">
+                <span>Картина</span>
+                <small>2 дерева · 1 инструмент</small>
+              </button>
+              <button class="build-option" data-build="bookshelf">
+                <span>Книжный шкаф</span>
+                <small>6 дерева · 2 инструмента</small>
+              </button>
             </div>
             <div class="build-grid build-category" data-category="lights">
               <button class="build-option" data-build="torch">
@@ -146,11 +192,99 @@
                 <span>Лампа</span>
                 <small>4 дерева · 2 камня · 2 инструмента</small>
               </button>
+              <button class="build-option" data-build="lantern">
+                <span>Фонарь</span>
+                <small>3 дерева · 1 инструмент</small>
+              </button>
+              <button class="build-option" data-build="street-lamp">
+                <span>Уличный фонарь</span>
+                <small>6 дерева · 3 камня · 2 инструмента</small>
+              </button>
+              <button class="build-option" data-build="light-tower">
+                <span>Световая башня</span>
+                <small>10 камня · 4 инструмента</small>
+              </button>
+            </div>
+            <div class="build-grid build-category" data-category="functional">
+              <button class="build-option" data-build="kitchen">
+                <span>Кухня</span>
+                <small>8 дерева · 4 камня</small>
+              </button>
+              <button class="build-option" data-build="forge">
+                <span>Кузница</span>
+                <small>6 дерева · 8 камня</small>
+              </button>
+              <button class="build-option" data-build="carpenter">
+                <span>Столярка</span>
+                <small>10 дерева · 4 камня</small>
+              </button>
+              <button class="build-option" data-build="greenhouse">
+                <span>Оранжерея</span>
+                <small>8 дерева · 4 воды</small>
+              </button>
+              <button class="build-option" data-build="pantry">
+                <span>Кладовая</span>
+                <small>6 дерева · 2 камня</small>
+              </button>
+              <button class="build-option" data-build="infirmary">
+                <span>Лазарет</span>
+                <small>8 дерева · 2 инструмента</small>
+              </button>
+              <button class="build-option" data-build="sauna">
+                <span>Сауна</span>
+                <small>6 дерева · 4 воды</small>
+              </button>
+              <button class="build-option" data-build="hunting-lodge">
+                <span>Охотничий домик</span>
+                <small>8 дерева · 2 камня</small>
+              </button>
+              <button class="build-option" data-build="corral">
+                <span>Загон</span>
+                <small>6 дерева</small>
+              </button>
             </div>
             <div class="build-grid build-category" data-category="decor">
               <button class="build-option" data-build="banner">
                 <span>Знамя</span>
                 <small>2 дерева · 2 еды</small>
+              </button>
+              <button class="build-option" data-build="gazebo">
+                <span>Беседка</span>
+                <small>10 дерева</small>
+              </button>
+              <button class="build-option" data-build="fountain">
+                <span>Фонтан</span>
+                <small>6 камня · 2 воды</small>
+              </button>
+              <button class="build-option" data-build="statue">
+                <span>Скульптура</span>
+                <small>8 камня</small>
+              </button>
+              <button class="build-option" data-build="garden">
+                <span>Сад</span>
+                <small>4 дерева · 2 воды</small>
+              </button>
+            </div>
+            <div class="build-grid build-category" data-category="infrastructure">
+              <button class="build-option" data-build="watchpost">
+                <span>Пост наблюдения</span>
+                <small>6 дерева · 2 камня</small>
+              </button>
+              <button class="build-option" data-build="signal-tower">
+                <span>Сигнальная башня</span>
+                <small>8 дерева · 6 камня · 2 инструмента</small>
+              </button>
+              <button class="build-option" data-build="light-beacon">
+                <span>Световой маяк</span>
+                <small>10 камня · 4 инструмента</small>
+              </button>
+              <button class="build-option" data-build="guard-post">
+                <span>Караульный пост</span>
+                <small>6 дерева · 4 камня</small>
+              </button>
+              <button class="build-option" data-build="road-marker">
+                <span>Дорожный знак</span>
+                <small>2 дерева</small>
               </button>
             </div>
           </section>
