@@ -224,6 +224,10 @@ canvas {
   display: none;
 }
 
+.hidden {
+  display: none;
+}
+
 .card {
   background: #0f1626;
   border-radius: 10px;
@@ -456,6 +460,56 @@ footer {
   display: grid;
   gap: 16px;
   margin-top: 12px;
+}
+
+.save-input {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: #c7d2e6;
+}
+
+.save-input input {
+  background: #0f1626;
+  border: 1px solid #2b3244;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #e7edf6;
+}
+
+.save-slots {
+  display: grid;
+  gap: 10px;
+}
+
+.save-slot {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #2b3244;
+  background: rgba(15, 22, 38, 0.9);
+}
+
+.save-slot-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.save-slot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.save-slot small {
+  color: #9aa8c7;
+}
+
+.save-slot.empty {
+  opacity: 0.6;
 }
 
 .menu-actions {
