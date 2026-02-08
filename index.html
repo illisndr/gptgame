@@ -32,6 +32,7 @@
               <button class="tab active" data-tab="overview" aria-selected="true">Обзор</button>
               <button class="tab" data-tab="build">Постройки</button>
               <button class="tab" data-tab="orders">Задачи</button>
+              <button class="tab" data-tab="explore">Экспедиции</button>
               <button class="tab" data-tab="units">Колонисты</button>
             </div>
           </div>
@@ -55,6 +56,7 @@
               <ul class="hint-list">
                 <li>Пробел — пауза.</li>
                 <li>Колёсико мыши — зум карты.</li>
+                <li>ПКМ/средняя кнопка — перемещение карты.</li>
                 <li>Клик по колонисту — выбор.</li>
                 <li>Клик по тайлу — команда.</li>
               </ul>
@@ -80,6 +82,10 @@
                 <span>Ферма</span>
                 <small>6 дерева · 4 еды</small>
               </button>
+              <button class="build-option" data-build="well">
+                <span>Колодец</span>
+                <small>8 дерева · 4 камня</small>
+              </button>
               <button class="build-option" data-build="beacon">
                 <span>Маяк</span>
                 <small>10 дерева · 10 камня · 2 инструмента</small>
@@ -89,6 +95,54 @@
           <section class="panel-section hidden" data-panel="orders">
             <h2>План на сегодня</h2>
             <ul id="tasks"></ul>
+          </section>
+          <section class="panel-section hidden" data-panel="explore">
+            <h2>Экспедиции</h2>
+            <p>Выбери биом и подготовь группу.</p>
+            <div class="card">
+              <h3>Биомы</h3>
+              <div class="biome-list" id="biome-list"></div>
+              <p class="muted" id="biome-risk">Риск: —</p>
+            </div>
+            <div class="card">
+              <h3>Подготовка</h3>
+              <div class="prep-grid">
+                <div class="prep-row">
+                  <span>Группа</span>
+                  <div class="stepper">
+                    <button data-step="team" data-dir="-1">−</button>
+                    <span id="team-size">2</span>
+                    <button data-step="team" data-dir="1">+</button>
+                  </div>
+                </div>
+                <div class="prep-row">
+                  <span>Еда</span>
+                  <div class="stepper">
+                    <button data-step="food" data-dir="-1">−</button>
+                    <span id="food-pack">4</span>
+                    <button data-step="food" data-dir="1">+</button>
+                  </div>
+                </div>
+                <div class="prep-row">
+                  <span>Вода</span>
+                  <div class="stepper">
+                    <button data-step="water" data-dir="-1">−</button>
+                    <span id="water-pack">3</span>
+                    <button data-step="water" data-dir="1">+</button>
+                  </div>
+                </div>
+                <div class="prep-row">
+                  <span>Инстр.</span>
+                  <div class="stepper">
+                    <button data-step="tools" data-dir="-1">−</button>
+                    <span id="tools-pack">1</span>
+                    <button data-step="tools" data-dir="1">+</button>
+                  </div>
+                </div>
+              </div>
+              <button id="send-expedition">Отправить экспедицию</button>
+              <ul id="expedition-log" class="log-list"></ul>
+            </div>
           </section>
           <section class="panel-section hidden" data-panel="units">
             <h2>Команды</h2>
@@ -136,6 +190,16 @@
         <div class="modal-actions">
           <button id="start-campaign">Начать сюжет</button>
           <button id="free-play">Свободная игра</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal" id="choice-modal">
+      <div class="modal-card">
+        <h2 id="choice-title">Сюжетный выбор</h2>
+        <p id="choice-body"></p>
+        <div class="modal-actions">
+          <button id="choice-a">Вариант А</button>
+          <button id="choice-b">Вариант Б</button>
         </div>
       </div>
     </div>

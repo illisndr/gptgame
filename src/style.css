@@ -186,6 +186,12 @@ canvas {
   font-size: 13px;
 }
 
+.muted {
+  color: #9aa8c7;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
 .hint-list {
   margin: 0;
   padding-left: 16px;
@@ -213,6 +219,65 @@ canvas {
 .build-grid {
   display: grid;
   gap: 10px;
+}
+
+.biome-list {
+  display: grid;
+  gap: 8px;
+}
+
+.biome-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #171e2e;
+  border: 1px solid #2b3244;
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.biome-item.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.biome-item.active {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 1px #22d3ee inset;
+}
+
+.prep-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.prep-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #d6deea;
+  font-size: 13px;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #0f1626;
+  border: 1px solid #2b3244;
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.stepper button {
+  padding: 4px 8px;
+}
+
+.log-list {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #c7d2e6;
 }
 
 .build-option {
