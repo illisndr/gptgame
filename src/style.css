@@ -236,6 +236,35 @@ canvas {
   gap: 10px;
 }
 
+.build-subtabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.build-subtab {
+  background: #131b2d;
+  border: 1px solid #2b3244;
+  color: #cfd7e6;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.build-subtab.active {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px #38bdf8 inset;
+}
+
+.build-category {
+  display: none;
+}
+
+.build-category.active {
+  display: grid;
+}
+
 #toggle-dismantle {
   background: linear-gradient(135deg, #f59e0b, #f97316);
   color: #0b1220;
