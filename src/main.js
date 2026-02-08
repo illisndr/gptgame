@@ -40,6 +40,7 @@ const mainMenuModal = document.getElementById("main-menu");
 const menuStoryButton = document.getElementById("menu-story");
 const menuFreeButton = document.getElementById("menu-free");
 const menuSettingsButton = document.getElementById("menu-settings");
+const menuSavesButton = document.getElementById("menu-saves");
 const menuInfoButton = document.getElementById("menu-info");
 const menuExitButton = document.getElementById("menu-exit");
 const pauseMenuModal = document.getElementById("pause-menu");
@@ -52,6 +53,11 @@ const systemModal = document.getElementById("system-modal");
 const systemTitle = document.getElementById("system-title");
 const systemBody = document.getElementById("system-body");
 const systemClose = document.getElementById("system-close");
+const saveLoadModal = document.getElementById("save-load-modal");
+const saveLoadTitle = document.getElementById("save-load-title");
+const saveLoadClose = document.getElementById("save-load-close");
+const saveSlots = document.getElementById("save-slots");
+const saveNameInput = document.getElementById("save-name");
 
 const TILE_SIZE = 32;
 const MAP_SIZE = 28;
@@ -3220,6 +3226,217 @@ function showSystemModal(title, body) {
   systemModal.classList.add("show");
 }
 
+const SAVE_VERSION = "0.4.0";
+const SAVE_SLOTS = 5;
+
+function getSaveKey(slot) {
+  return `gptgame_save_slot_${slot}`;
+}
+
+function formatTimestamp(timestamp) {
+  if (!timestamp) return "—";
+  const date = new Date(timestamp);
+  return date.toLocaleString("ru-RU");
+}
+
+function buildSaveSummary(data) {
+  const day = data?.systems?.day ?? 0;
+  const time = data?.systems?.time ?? 0;
+  const colonistsCount = data?.colonists?.length ?? 0;
+  const food = data?.resources?.food ?? 0;
+  const wood = data?.resources?.wood ?? 0;
+  const stone = data?.resources?.stone ?? 0;
+  return `День ${day}, ${time.toFixed(1)}ч · колонисты ${colonistsCount} · еда ${food} · дерево ${wood} · камень ${stone}`;
+}
+
+function createSavePayload() {
+  return {
+    version: SAVE_VERSION,
+    timestamp: Date.now(),
+    world: {
+      map: gameState.map,
+      nodes: gameState.nodes,
+      animals: gameState.animals,
+      structures: gameState.structures,
+      buildOrders: gameState.buildOrders
+    },
+    colonists: gameState.colonists,
+    resources: gameState.resources,
+    expeditions: {
+      exploration: gameState.exploration
+    },
+    systems: {
+      day: gameState.day,
+      time: gameState.time,
+      speed: gameState.speed,
+      paused: gameState.paused,
+      zoom: gameState.zoom,
+      pan: gameState.pan,
+      selectedTab: gameState.selectedTab,
+      selectedBuild: gameState.selectedBuild,
+      buildCategory: gameState.buildCategory,
+      buildMode: gameState.buildMode,
+      commandMode: gameState.commandMode,
+      storyMode: gameState.storyMode,
+      story: gameState.story,
+      storyFlags: gameState.storyFlags,
+      events: gameState.events,
+      lastRescueDay: gameState.lastRescueDay,
+      dismantleCount: gameState.dismantleCount,
+      dismantleDay: gameState.dismantleDay
+    }
+  };
+}
+
+function isValidSave(data) {
+  return Boolean(
+    data &&
+      typeof data === "object" &&
+      data.version &&
+      data.world &&
+      Array.isArray(data.world.map) &&
+      Array.isArray(data.colonists)
+  );
+}
+
+function renderSaveSlots(mode) {
+  saveSlots.innerHTML = "";
+  for (let i = 1; i <= SAVE_SLOTS; i += 1) {
+    const raw = localStorage.getItem(getSaveKey(i));
+    const data = raw ? JSON.parse(raw) : null;
+    const slot = document.createElement("div");
+    slot.className = `save-slot ${data ? "" : "empty"}`;
+    const title = data?.name ?? `Слот ${i}`;
+    const summary = data ? buildSaveSummary(data) : "Пустой слот";
+    slot.innerHTML = `
+      <div class="save-slot-header">
+        <strong>${title}</strong>
+        <small>${data ? formatTimestamp(data.timestamp) : "—"}</small>
+      </div>
+      <small>${summary}</small>
+      <div class="save-slot-actions">
+        ${mode === "save" ? `<button data-action="save" data-slot="${i}">Сохранить</button>` : ""}
+        ${mode === "load" ? `<button data-action="load" data-slot="${i}" ${data ? "" : "disabled"}>Загрузить</button>` : ""}
+        ${data ? `<button data-action="delete" data-slot="${i}">Удалить</button>` : ""}
+      </div>
+    `;
+    saveSlots.appendChild(slot);
+  }
+
+  saveSlots.querySelectorAll("button[data-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const slot = Number(button.dataset.slot);
+      const action = button.dataset.action;
+      if (action === "save") {
+        handleSave(slot);
+      } else if (action === "load") {
+        handleLoad(slot);
+      } else if (action === "delete") {
+        handleDelete(slot);
+      }
+    });
+  });
+}
+
+function openSaveLoadModal(mode) {
+  saveLoadTitle.textContent = mode === "save" ? "Сохранить игру" : "Загрузить игру";
+  saveNameInput.parentElement?.classList.toggle("hidden", mode !== "save");
+  saveNameInput.value = "";
+  renderSaveSlots(mode);
+  saveLoadModal.classList.add("show");
+  gameState.paused = true;
+  togglePauseButton.textContent = "Продолжить";
+  saveLoadModal.dataset.mode = mode;
+}
+
+function closeSaveLoadModal() {
+  saveLoadModal.classList.remove("show");
+  if (gameState.started) {
+    gameState.paused = false;
+    togglePauseButton.textContent = "Пауза";
+  }
+}
+
+function handleSave(slot) {
+  try {
+    const payload = createSavePayload();
+    payload.name = saveNameInput.value.trim() || `День ${gameState.day}`;
+    localStorage.setItem(getSaveKey(slot), JSON.stringify(payload));
+    renderSaveSlots("save");
+    pushEvent("Игра сохранена.");
+  } catch (error) {
+    console.error(error);
+    showSystemModal("Ошибка сохранения", "Не удалось записать сохранение.");
+  }
+}
+
+function handleLoad(slot) {
+  try {
+    const raw = localStorage.getItem(getSaveKey(slot));
+    if (!raw) {
+      showSystemModal("Ошибка загрузки", "Слот пуст.");
+      return;
+    }
+    const data = JSON.parse(raw);
+    if (!isValidSave(data)) {
+      showSystemModal("Ошибка загрузки", "Файл сохранения повреждён.");
+      return;
+    }
+    if (data.version !== SAVE_VERSION) {
+      showSystemModal("Ошибка загрузки", "Версия сохранения устарела.");
+      return;
+    }
+    gameState.map = data.world.map;
+    gameState.nodes = data.world.nodes;
+    gameState.animals = data.world.animals;
+    gameState.structures = data.world.structures;
+    gameState.buildOrders = data.world.buildOrders;
+    gameState.colonists = data.colonists;
+    gameState.resources = data.resources;
+    gameState.exploration = data.expeditions?.exploration ?? gameState.exploration;
+    gameState.day = data.systems.day;
+    gameState.time = data.systems.time;
+    gameState.speed = data.systems.speed;
+    gameState.paused = true;
+    gameState.zoom = data.systems.zoom ?? gameState.zoom;
+    gameState.pan = data.systems.pan ?? gameState.pan;
+    gameState.selectedTab = data.systems.selectedTab ?? "overview";
+    gameState.selectedBuild = data.systems.selectedBuild ?? "camp";
+    gameState.buildCategory = data.systems.buildCategory ?? "basic";
+    gameState.buildMode = data.systems.buildMode ?? "build";
+    gameState.commandMode = data.systems.commandMode ?? "move";
+    gameState.storyMode = data.systems.storyMode;
+    gameState.story = data.systems.story;
+    gameState.storyFlags = data.systems.storyFlags;
+    gameState.events = data.systems.events ?? [];
+    gameState.lastRescueDay = data.systems.lastRescueDay ?? 0;
+    gameState.dismantleCount = data.systems.dismantleCount ?? 0;
+    gameState.dismantleDay = data.systems.dismantleDay ?? 0;
+    gameState.started = true;
+    gameState.selectedObject = null;
+    gameState.selectedColonistId = null;
+    setTab(gameState.selectedTab);
+    renderBiomes();
+    updateExpeditionPrepUI();
+    updateTasks();
+    updateZoomLabel();
+    updateOrders();
+    updateSelectedUnit();
+    updateInfoPanel();
+    resizeCanvas();
+    closeSaveLoadModal();
+    showSystemModal("Загрузка", "Сохранение успешно загружено.");
+  } catch (error) {
+    console.error(error);
+    showSystemModal("Ошибка загрузки", "Не удалось загрузить сохранение.");
+  }
+}
+
+function handleDelete(slot) {
+  localStorage.removeItem(getSaveKey(slot));
+  renderSaveSlots(saveLoadModal.dataset.mode ?? "save");
+}
+
 function openMainMenu() {
   mainMenuModal.classList.add("show");
   setupModal.classList.remove("show");
@@ -3463,6 +3680,7 @@ menuFreeButton.addEventListener("click", () => startModeFlow("free"));
 menuSettingsButton.addEventListener("click", () =>
   showSystemModal("Настройки", "Настройки будут добавлены позже.")
 );
+menuSavesButton.addEventListener("click", () => openSaveLoadModal("load"));
 menuInfoButton.addEventListener("click", () => {
   tutorialModal.classList.add("show");
 });
@@ -3470,12 +3688,8 @@ menuExitButton.addEventListener("click", () =>
   showSystemModal("Выход", "Выход недоступен в браузере. Используйте вкладку браузера.")
 );
 pauseContinueButton.addEventListener("click", () => closePauseMenu());
-pauseSaveButton.addEventListener("click", () =>
-  showSystemModal("Сохранение", "Сохранение будет добавлено в следующей версии.")
-);
-pauseLoadButton.addEventListener("click", () =>
-  showSystemModal("Загрузка", "Загрузка будет добавлена в следующей версии.")
-);
+pauseSaveButton.addEventListener("click", () => openSaveLoadModal("save"));
+pauseLoadButton.addEventListener("click", () => openSaveLoadModal("load"));
 pauseSettingsButton.addEventListener("click", () =>
   showSystemModal("Настройки", "Настройки будут добавлены позже.")
 );
@@ -3484,5 +3698,6 @@ pauseExitButton.addEventListener("click", () => {
   openMainMenu();
 });
 systemClose.addEventListener("click", () => systemModal.classList.remove("show"));
+saveLoadClose.addEventListener("click", () => closeSaveLoadModal());
 openMainMenu();
 renderLoop();
