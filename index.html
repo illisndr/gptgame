@@ -65,10 +65,17 @@
           <section class="panel-section hidden" data-panel="build">
             <h2>Постройки</h2>
             <p>Выбери постройку и кликни по карте.</p>
+            <div class="build-subtabs">
+              <button class="build-subtab active" data-category="basic">Базовое</button>
+              <button class="build-subtab" data-category="walls">Стены</button>
+              <button class="build-subtab" data-category="furniture">Мебель</button>
+              <button class="build-subtab" data-category="lights">Свет</button>
+              <button class="build-subtab" data-category="decor">Декор</button>
+            </div>
             <div class="build-grid">
               <button id="toggle-dismantle">Режим: строительство</button>
             </div>
-            <div class="build-grid">
+            <div class="build-grid build-category active" data-category="basic">
               <button class="build-option active" data-build="camp">
                 <span>Лагерь</span>
                 <small>10 дерева</small>
@@ -100,6 +107,50 @@
               <button class="build-option" data-build="beacon">
                 <span>Маяк</span>
                 <small>10 дерева · 10 камня · 2 инструмента</small>
+              </button>
+            </div>
+            <div class="build-grid build-category" data-category="walls">
+              <button class="build-option" data-build="wall">
+                <span>Стена</span>
+                <small>4 камня</small>
+              </button>
+              <button class="build-option" data-build="fence">
+                <span>Ограждение</span>
+                <small>4 дерева</small>
+              </button>
+              <button class="build-option" data-build="gate">
+                <span>Ворота</span>
+                <small>6 дерева · 2 камня</small>
+              </button>
+            </div>
+            <div class="build-grid build-category" data-category="furniture">
+              <button class="build-option" data-build="bed">
+                <span>Кровать</span>
+                <small>6 дерева · 2 еды</small>
+              </button>
+              <button class="build-option" data-build="table">
+                <span>Стол</span>
+                <small>6 дерева</small>
+              </button>
+              <button class="build-option" data-build="chair">
+                <span>Стул</span>
+                <small>3 дерева</small>
+              </button>
+            </div>
+            <div class="build-grid build-category" data-category="lights">
+              <button class="build-option" data-build="torch">
+                <span>Факел</span>
+                <small>4 дерева · 1 инструмент</small>
+              </button>
+              <button class="build-option" data-build="lamp">
+                <span>Лампа</span>
+                <small>4 дерева · 2 камня · 2 инструмента</small>
+              </button>
+            </div>
+            <div class="build-grid build-category" data-category="decor">
+              <button class="build-option" data-build="banner">
+                <span>Знамя</span>
+                <small>2 дерева · 2 еды</small>
               </button>
             </div>
           </section>
@@ -215,7 +266,7 @@
         </div>
       </div>
     </div>
-    <div class="modal show" id="setup">
+    <div class="modal" id="setup">
       <div class="modal-card modal-wide">
         <h2>Подготовка экспедиции</h2>
         <p class="subtitle">Выбери 3 колонистов. Каждый даёт бонусы и слабости.</p>
