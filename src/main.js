@@ -29,6 +29,11 @@ const choiceTitle = document.getElementById("choice-title");
 const choiceBody = document.getElementById("choice-body");
 const choiceAButton = document.getElementById("choice-a");
 const choiceBButton = document.getElementById("choice-b");
+const toggleDismantleButton = document.getElementById("toggle-dismantle");
+const dismantleModal = document.getElementById("dismantle-modal");
+const dismantleBody = document.getElementById("dismantle-body");
+const dismantleConfirm = document.getElementById("dismantle-confirm");
+const dismantleCancel = document.getElementById("dismantle-cancel");
 
 const TILE_SIZE = 32;
 const MAP_SIZE = 28;
@@ -114,6 +119,8 @@ const gameState = {
   selectedColonists: [],
   started: false,
   lastRescueDay: 0,
+  dismantleCount: 0,
+  dismantleDay: 0,
   pan: { x: 0, y: 0 },
   exploration: {
     team: 2,
@@ -121,7 +128,9 @@ const gameState = {
     selectedBiome: "forest",
     log: []
   },
-  choice: null
+  choice: null,
+  buildMode: "build",
+  pendingDismantle: null
 };
 
 const camera = {
@@ -342,6 +351,21 @@ function findClosestOrder(fromX, fromY) {
   let bestDistance = Infinity;
   for (const order of gameState.buildOrders) {
     if (order.progress >= order.cost) continue;
+    if (order.mode && order.mode !== "build") continue;
+    const distance = Math.abs(order.x - fromX) + Math.abs(order.y - fromY);
+    if (distance < bestDistance) {
+      best = order;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function findClosestDismantle(fromX, fromY) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const order of gameState.buildOrders) {
+    if (order.mode !== "dismantle" || order.progress >= order.cost) continue;
     const distance = Math.abs(order.x - fromX) + Math.abs(order.y - fromY);
     if (distance < bestDistance) {
       best = order;
@@ -415,6 +439,12 @@ function assignTask(colonist) {
     colonist.task = "haul";
     const dropoff = getDropoffTarget(colonist);
     colonist.goal = { x: dropoff.x, y: dropoff.y };
+    return;
+  }
+  const dismantle = findClosestDismantle(colonist.x, colonist.y);
+  if (dismantle) {
+    colonist.task = "dismantle";
+    colonist.goal = { x: dismantle.x, y: dismantle.y };
     return;
   }
   if (gameState.structures.some((structure) => structure.type === "workshop")) {
@@ -524,6 +554,25 @@ function handleTask(colonist, delta) {
       colonist.goal = null;
       break;
     }
+    case "dismantle": {
+      const order = gameState.buildOrders.find((item) => item.x === colonist.goal.x && item.y === colonist.goal.y);
+      if (order) {
+        order.progress += Math.max(1, Math.round(1 * colonist.modifiers.workRate));
+        if (order.progress >= order.cost) {
+          const structure = gameState.structures.find(
+            (item) => item.x === order.x && item.y === order.y && item.type === order.type
+          );
+          if (structure) {
+            gameState.structures = gameState.structures.filter((item) => item !== structure);
+          }
+          applyDismantleReturns(order, colonist);
+          gameState.buildOrders = gameState.buildOrders.filter((item) => item !== order);
+        }
+      }
+      colonist.task = "idle";
+      colonist.goal = null;
+      break;
+    }
     default:
       break;
   }
@@ -583,6 +632,7 @@ function updateStory() {
 
 function updateStructures(delta) {
   for (const structure of gameState.structures) {
+    if (structure.disabled) continue;
     if (structure.type === "farm") {
       structure.timer = (structure.timer ?? 0) + delta;
       if (structure.timer >= 20) {
@@ -640,6 +690,54 @@ function checkRescueEvent() {
     gameState.resources.wood += 4;
     gameState.resources.water += 3;
     pushEvent("Спасатели оставили припасы. Это ваш шанс восстановиться.");
+  }
+}
+
+const BUILDING_DEFS = {
+  camp: { label: "лагерь", cost: { wood: 10 }, work: 6, salvage: { wood: 6 } },
+  stockpile: { label: "склад", cost: { wood: 12 }, work: 7, salvage: { wood: 7 } },
+  workshop: { label: "мастерская", cost: { wood: 8, stone: 6 }, work: 8, salvage: { wood: 4, stone: 3 } },
+  farm: { label: "ферма", cost: { wood: 6, food: 4 }, work: 6, salvage: { wood: 3 } },
+  well: { label: "колодец", cost: { wood: 8, stone: 4 }, work: 6, salvage: { wood: 3, stone: 2 } },
+  lumberyard: { label: "лесопилка", cost: { wood: 10, stone: 4 }, work: 7, salvage: { wood: 5, stone: 2 } },
+  quarry: { label: "карьер", cost: { wood: 8, stone: 10 }, work: 8, salvage: { wood: 4, stone: 5 } },
+  beacon: { label: "маяк", cost: { wood: 10, stone: 10, tools: 2 }, work: 12, salvage: { wood: 5, stone: 5 } }
+};
+
+function getAverageMood() {
+  if (gameState.colonists.length === 0) return 50;
+  const total = gameState.colonists.reduce((sum, col) => sum + col.mood, 0);
+  return total / gameState.colonists.length;
+}
+
+function computeDismantleReturn(structure, colonist) {
+  const base = BUILDING_DEFS[structure.type]?.salvage ?? {};
+  const moodFactor = 0.3 + (getAverageMood() / 100) * 0.4;
+  const skillFactor = colonist ? Math.min(1.2, colonist.modifiers.workRate) : 1;
+  const toolFactor = 1 + Math.min(0.15, gameState.resources.tools * 0.02);
+  const penalty = gameState.dismantleCount >= 2 ? 0.85 : 1;
+  const returnRate = Math.min(0.7, Math.max(0.3, moodFactor * skillFactor * toolFactor * penalty));
+  const result = {};
+  Object.entries(base).forEach(([resource, amount]) => {
+    result[resource] = Math.max(0, Math.floor(amount * returnRate));
+  });
+  return result;
+}
+
+function applyDismantleReturns(order, colonist) {
+  const returns = computeDismantleReturn(order, colonist);
+  Object.entries(returns).forEach(([resource, amount]) => {
+    gameState.resources[resource] = (gameState.resources[resource] ?? 0) + amount;
+  });
+  const summary = Object.entries(returns)
+    .map(([resource, amount]) => `${resource}+${amount}`)
+    .join(", ");
+  pushEvent(`Разбор завершён: ${order.label}. Возврат: ${summary || "ничего"}.`);
+  gameState.dismantleCount += 1;
+  gameState.colonists.forEach((col) => (col.mood = Math.max(10, col.mood - 2)));
+  if (Math.random() < 0.15) {
+    colonist.rest = Math.max(0, colonist.rest - 10);
+    pushEvent("Во время разбора случилась травма. Отдых снизился.");
   }
 }
 
@@ -935,21 +1033,51 @@ function selectColonistAt(tile) {
 }
 
 function handleBuildClick(tile) {
+  if (gameState.buildMode === "dismantle") {
+    const structure = gameState.structures.find((item) => item.x === tile.x && item.y === tile.y);
+    if (!structure) {
+      pushEvent("Здесь нечего разбирать.");
+      return;
+    }
+    if (structure.type === "camp") {
+      const camps = gameState.structures.filter((item) => item.type === "camp").length;
+      if (camps <= 1) {
+        pushEvent("Нельзя разобрать последний лагерь.");
+        return;
+      }
+    }
+    const order = gameState.buildOrders.find((item) => item.x === structure.x && item.y === structure.y);
+    if (order) {
+      pushEvent("Эта постройка уже в работе.");
+      return;
+    }
+    const predicted = computeDismantleReturn(structure, null);
+    const summary = Object.entries(predicted)
+      .map(([resource, amount]) => `${resource}+${amount}`)
+      .join(", ");
+    dismantleBody.textContent = `Разобрать "${BUILDING_DEFS[structure.type]?.label ?? structure.type}"? Возврат: ${
+      summary || "ничего"
+    }.`;
+    gameState.pendingDismantle = structure;
+    dismantleModal.classList.add("show");
+    return;
+  }
   if (!canBuild(tile.x, tile.y)) {
+    if (gameState.buildMode === "dismantle") {
+      const structure = gameState.structures.find((item) => item.x === tile.x && item.y === tile.y);
+      if (!structure) {
+        pushEvent("Здесь нечего разбирать.");
+        return;
+      }
+    }
     pushEvent("Тут нельзя строить.");
     return;
   }
-  const buildDefinitions = {
-    camp: { label: "лагерь", cost: { wood: 10 }, work: 6 },
-    stockpile: { label: "склад", cost: { wood: 12 }, work: 7 },
-    workshop: { label: "мастерская", cost: { wood: 8, stone: 6 }, work: 8 },
-    farm: { label: "ферма", cost: { wood: 6, food: 4 }, work: 6 },
-    well: { label: "колодец", cost: { wood: 8, stone: 4 }, work: 6 },
-    lumberyard: { label: "лесопилка", cost: { wood: 10, stone: 4 }, work: 7 },
-    quarry: { label: "карьер", cost: { wood: 8, stone: 10 }, work: 8 },
-    beacon: { label: "маяк", cost: { wood: 10, stone: 10, tools: 2 }, work: 12 }
-  };
-  const definition = buildDefinitions[gameState.selectedBuild];
+  if (gameState.buildMode === "dismantle") {
+    pushEvent("Выберите постройку для разбора.");
+    return;
+  }
+  const definition = BUILDING_DEFS[gameState.selectedBuild];
   if (!definition) return;
   for (const [resource, amount] of Object.entries(definition.cost)) {
     if (gameState.resources[resource] < amount) {
@@ -1554,6 +1682,34 @@ window.addEventListener("mousemove", (event) => {
 
 choiceAButton.addEventListener("click", () => resolveChoice(0));
 choiceBButton.addEventListener("click", () => resolveChoice(1));
+dismantleCancel.addEventListener("click", () => {
+  dismantleModal.classList.remove("show");
+  gameState.pendingDismantle = null;
+});
+dismantleConfirm.addEventListener("click", () => {
+  const structure = gameState.pendingDismantle;
+  if (!structure) return;
+  structure.disabled = true;
+  const def = BUILDING_DEFS[structure.type];
+  gameState.buildOrders.push({
+    x: structure.x,
+    y: structure.y,
+    cost: Math.max(4, def?.work ?? 6),
+    progress: 0,
+    type: structure.type,
+    label: def?.label ?? structure.type,
+    mode: "dismantle"
+  });
+  dismantleModal.classList.remove("show");
+  gameState.pendingDismantle = null;
+  pushEvent(`Создан заказ на разбор: ${def?.label ?? structure.type}.`);
+});
+
+toggleDismantleButton.addEventListener("click", () => {
+  gameState.buildMode = gameState.buildMode === "build" ? "dismantle" : "build";
+  toggleDismantleButton.textContent =
+    gameState.buildMode === "build" ? "Режим: строительство" : "Режим: разбор";
+});
 
 document.querySelectorAll("[data-step]").forEach((button) => {
   button.addEventListener("click", () => {
