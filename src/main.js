@@ -34,6 +34,7 @@ const dismantleModal = document.getElementById("dismantle-modal");
 const dismantleBody = document.getElementById("dismantle-body");
 const dismantleConfirm = document.getElementById("dismantle-confirm");
 const dismantleCancel = document.getElementById("dismantle-cancel");
+const infoPanel = document.getElementById("info-panel");
 
 const TILE_SIZE = 32;
 const MAP_SIZE = 28;
@@ -57,6 +58,12 @@ const resourceValues = {
   tree: { wood: 4 },
   berries: { food: 3 },
   rock: { stone: 4 }
+};
+
+const RESOURCE_DEFS = {
+  tree: { name: "Дерево", description: "Источник древесины для строительства.", yields: "дерево" },
+  berries: { name: "Ягодник", description: "Быстрый источник еды, но истощается.", yields: "еда" },
+  rock: { name: "Камень", description: "Узлы камня для мастерства и стен.", yields: "камень" }
 };
 
 if (!CanvasRenderingContext2D.prototype.roundRect) {
@@ -92,6 +99,7 @@ const gameState = {
   events: [],
   map: [],
   nodes: [],
+  animals: [],
   buildOrders: [],
   structures: [],
   colonists: [],
@@ -130,7 +138,9 @@ const gameState = {
   },
   choice: null,
   buildMode: "build",
-  pendingDismantle: null
+  pendingDismantle: null,
+  selectedObject: null,
+  animalSpawnTimer: 0
 };
 
 const camera = {
@@ -188,6 +198,42 @@ const BIOMES = [
     hidden: ["Пещера выживших"],
     rare: ["Кристалл связи"],
     unlockFlag: "mountainHint"
+  }
+];
+
+const ANIMALS = [
+  {
+    id: "hare",
+    name: "Заяц",
+    description: "Мелкая добыча. Часто уходит при приближении.",
+    food: 4,
+    danger: 0.1,
+    fleeChance: 0.5,
+    aggressive: false,
+    behavior: "flee",
+    huntTime: 2
+  },
+  {
+    id: "deer",
+    name: "Олень",
+    description: "Осторожное животное. Может сбежать.",
+    food: 8,
+    danger: 0.2,
+    fleeChance: 0.35,
+    aggressive: false,
+    behavior: "cautious",
+    huntTime: 3
+  },
+  {
+    id: "boar",
+    name: "Кабан",
+    description: "Агрессивная добыча. Риск ранения и смерти.",
+    food: 10,
+    danger: 0.6,
+    fleeChance: 0.2,
+    aggressive: true,
+    behavior: "aggressive",
+    huntTime: 4
   }
 ];
 
@@ -264,6 +310,36 @@ function createResources() {
   addNode("berries", 18);
   addNode("rock", 16);
   return nodes;
+}
+
+function createAnimals() {
+  const animals = [];
+  for (let i = 0; i < 5; i += 1) {
+    spawnAnimal(animals);
+  }
+  return animals;
+}
+
+function spawnAnimal(list = gameState.animals) {
+  const type = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
+  const maxAttempts = 12;
+  let x = 0;
+  let y = 0;
+  let attempts = 0;
+  do {
+    x = Math.floor(Math.random() * MAP_SIZE);
+    y = Math.floor(Math.random() * MAP_SIZE);
+    attempts += 1;
+  } while (attempts < maxAttempts && (!canWalk(x, y) || !canBuild(x, y)));
+  if (!canWalk(x, y) || !canBuild(x, y)) return;
+  list.push({
+    id: crypto.randomUUID(),
+    type: type.id,
+    name: type.name,
+    x,
+    y,
+    ttl: 60 + Math.floor(Math.random() * 40)
+  });
 }
 
 const colonistRoster = [
@@ -573,6 +649,18 @@ function handleTask(colonist, delta) {
       colonist.goal = null;
       break;
     }
+    case "hunt": {
+      const animal = gameState.animals.find((item) => item.id === colonist.goal.animalId);
+      if (!animal) {
+        colonist.task = "idle";
+        colonist.goal = null;
+        break;
+      }
+      resolveHunt(colonist, animal);
+      colonist.task = "idle";
+      colonist.goal = null;
+      break;
+    }
     default:
       break;
   }
@@ -680,6 +768,24 @@ function updateResources(delta) {
   }
 }
 
+function updateAnimals(delta) {
+  gameState.animalSpawnTimer += delta;
+  if (gameState.animalSpawnTimer >= 30) {
+    gameState.animalSpawnTimer = 0;
+    const foodPressure = gameState.resources.food < 12 ? 0.08 : 0;
+    const moodPenalty = getAverageMood() < 45 ? -0.08 : 0;
+    const dayBonus = Math.min(0.12, (gameState.day - 1) * 0.02);
+    const spawnChance = Math.max(0.15, Math.min(0.75, 0.45 + foodPressure + moodPenalty + dayBonus));
+    if (gameState.animals.length < 8 && Math.random() < spawnChance) {
+      spawnAnimal();
+    }
+  }
+  gameState.animals = gameState.animals.filter((animal) => {
+    animal.ttl -= delta;
+    return animal.ttl > 0;
+  });
+}
+
 function checkRescueEvent() {
   const lowFood = gameState.resources.food <= 4;
   const lowWood = gameState.resources.wood <= 4;
@@ -694,14 +800,62 @@ function checkRescueEvent() {
 }
 
 const BUILDING_DEFS = {
-  camp: { label: "лагерь", cost: { wood: 10 }, work: 6, salvage: { wood: 6 } },
-  stockpile: { label: "склад", cost: { wood: 12 }, work: 7, salvage: { wood: 7 } },
-  workshop: { label: "мастерская", cost: { wood: 8, stone: 6 }, work: 8, salvage: { wood: 4, stone: 3 } },
-  farm: { label: "ферма", cost: { wood: 6, food: 4 }, work: 6, salvage: { wood: 3 } },
-  well: { label: "колодец", cost: { wood: 8, stone: 4 }, work: 6, salvage: { wood: 3, stone: 2 } },
-  lumberyard: { label: "лесопилка", cost: { wood: 10, stone: 4 }, work: 7, salvage: { wood: 5, stone: 2 } },
-  quarry: { label: "карьер", cost: { wood: 8, stone: 10 }, work: 8, salvage: { wood: 4, stone: 5 } },
-  beacon: { label: "маяк", cost: { wood: 10, stone: 10, tools: 2 }, work: 12, salvage: { wood: 5, stone: 5 } }
+  camp: {
+    label: "лагерь",
+    description: "Базовая точка отдыха и сбора.",
+    cost: { wood: 10 },
+    work: 6,
+    salvage: { wood: 6 }
+  },
+  stockpile: {
+    label: "склад",
+    description: "Хранение ресурсов и удобный дроп-офф.",
+    cost: { wood: 12 },
+    work: 7,
+    salvage: { wood: 7 }
+  },
+  workshop: {
+    label: "мастерская",
+    description: "Производство инструментов.",
+    cost: { wood: 8, stone: 6 },
+    work: 8,
+    salvage: { wood: 4, stone: 3 }
+  },
+  farm: {
+    label: "ферма",
+    description: "Пассивная еда с таймером.",
+    cost: { wood: 6, food: 4 },
+    work: 6,
+    salvage: { wood: 3 }
+  },
+  well: {
+    label: "колодец",
+    description: "Пассивная вода.",
+    cost: { wood: 8, stone: 4 },
+    work: 6,
+    salvage: { wood: 3, stone: 2 }
+  },
+  lumberyard: {
+    label: "лесопилка",
+    description: "Пассивная древесина.",
+    cost: { wood: 10, stone: 4 },
+    work: 7,
+    salvage: { wood: 5, stone: 2 }
+  },
+  quarry: {
+    label: "карьер",
+    description: "Пассивный камень.",
+    cost: { wood: 8, stone: 10 },
+    work: 8,
+    salvage: { wood: 4, stone: 5 }
+  },
+  beacon: {
+    label: "маяк",
+    description: "Сюжетное здание для сигнала.",
+    cost: { wood: 10, stone: 10, tools: 2 },
+    work: 12,
+    salvage: { wood: 5, stone: 5 }
+  }
 };
 
 function getAverageMood() {
@@ -724,6 +878,12 @@ function computeDismantleReturn(structure, colonist) {
   return result;
 }
 
+function getHuntSupport(animal) {
+  return gameState.colonists.filter(
+    (col) => Math.abs(col.x - animal.x) + Math.abs(col.y - animal.y) <= 2
+  ).length;
+}
+
 function applyDismantleReturns(order, colonist) {
   const returns = computeDismantleReturn(order, colonist);
   Object.entries(returns).forEach(([resource, amount]) => {
@@ -741,6 +901,44 @@ function applyDismantleReturns(order, colonist) {
   }
 }
 
+function resolveHunt(colonist, animal) {
+  const type = ANIMALS.find((item) => item.id === animal.type);
+  if (!type) return;
+  const skill = colonist.modifiers.workRate;
+  const support = getHuntSupport(animal);
+  const toolBonus = Math.min(0.15, gameState.resources.tools * 0.03);
+  const supportBonus = Math.min(0.15, (support - 1) * 0.08);
+  const preparationPenalty = type.aggressive && support < 2 && gameState.resources.tools < 1 ? 0.12 : 0;
+  const successChance = Math.min(
+    0.9,
+    Math.max(0.2, 0.6 + (skill - 1) * 0.3 - type.danger * 0.2 + toolBonus + supportBonus - preparationPenalty)
+  );
+  const roll = Math.random();
+  if (roll < type.fleeChance) {
+    pushEvent(`${animal.name} убежал(а) от ${colonist.name}.`);
+    gameState.animals = gameState.animals.filter((item) => item.id !== animal.id);
+    return;
+  }
+  if (roll < successChance) {
+    gameState.resources.food += type.food;
+    pushEvent(`${colonist.name} добыл(а) ${type.food} еды (${animal.name}).`);
+    gameState.animals = gameState.animals.filter((item) => item.id !== animal.id);
+    return;
+  }
+  const counterChance = type.aggressive ? Math.max(0.2, 0.55 - supportBonus - toolBonus) : 0;
+  if (type.aggressive && Math.random() < counterChance) {
+    colonist.rest = Math.max(0, colonist.rest - 20);
+    colonist.mood = Math.max(10, colonist.mood - 8);
+    pushEvent(`${animal.name} ранил(а) ${colonist.name}.`);
+    if (Math.random() < 0.15) {
+      gameState.colonists = gameState.colonists.filter((item) => item.id !== colonist.id);
+      pushEvent(`${colonist.name} погиб(ла) на охоте.`);
+    }
+  } else {
+    pushEvent(`${colonist.name} не смог(ла) добыть ${animal.name}.`);
+  }
+}
+
 function update(delta) {
   if (gameState.paused) return;
   const workBoost = 1 + Math.min(0.25, gameState.resources.tools * 0.02);
@@ -754,6 +952,7 @@ function update(delta) {
   tickEvents();
   updateResources(delta);
   updateStructures(delta * workBoost);
+  updateAnimals(delta);
   checkRescueEvent();
 
   for (const colonist of gameState.colonists) {
@@ -832,6 +1031,17 @@ function drawResource(node) {
     ctx.fillStyle = resourcePalette.rock.highlight;
     ctx.fillRect(screenX + 16, screenY + 14, 6, 4);
   }
+}
+
+function drawAnimal(animal) {
+  const { x: screenX, y: screenY } = gridToScreen(animal.x, animal.y);
+  const color = animal.type === "boar" ? "#9b5e34" : animal.type === "deer" ? "#c8a67a" : "#c7d2e6";
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(screenX + 16, screenY + 16, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.fillRect(screenX + 12, screenY + 22, 8, 2);
 }
 
 function drawStructure(structure) {
@@ -964,6 +1174,9 @@ function render() {
   for (const node of gameState.nodes) {
     if (node.amount > 0) drawResource(node);
   }
+  for (const animal of gameState.animals) {
+    drawAnimal(animal);
+  }
   for (const structure of gameState.structures) {
     drawStructure(structure);
   }
@@ -991,6 +1204,7 @@ function updateHud() {
 function init() {
   gameState.map = createMap();
   gameState.nodes = createResources();
+  gameState.animals = createAnimals();
   gameState.colonists = createColonists();
   gameState.structures = [{ type: "camp", x: 14, y: 14 }];
   gameState.buildOrders = [];
@@ -1027,6 +1241,34 @@ function selectColonistAt(tile) {
   const colonist = gameState.colonists.find((unit) => unit.x === tile.x && unit.y === tile.y);
   if (colonist) {
     gameState.selectedColonistId = colonist.id;
+    gameState.selectedObject = { type: "colonist", data: colonist };
+    return true;
+  }
+  return false;
+}
+
+function selectAnimalAt(tile) {
+  const animal = gameState.animals.find((item) => item.x === tile.x && item.y === tile.y);
+  if (animal) {
+    gameState.selectedObject = { type: "animal", data: animal };
+    return true;
+  }
+  return false;
+}
+
+function selectResourceAt(tile) {
+  const node = gameState.nodes.find((item) => item.x === tile.x && item.y === tile.y && item.amount > 0);
+  if (node) {
+    gameState.selectedObject = { type: "resource", data: node };
+    return true;
+  }
+  return false;
+}
+
+function selectStructureAt(tile) {
+  const structure = gameState.structures.find((item) => item.x === tile.x && item.y === tile.y);
+  if (structure) {
+    gameState.selectedObject = { type: "structure", data: structure };
     return true;
   }
   return false;
@@ -1134,6 +1376,15 @@ function handleCommandClick(tile) {
     }
     pushEvent("Нет активной стройки здесь.");
   }
+  if (gameState.commandMode === "hunt") {
+    const animal = gameState.animals.find((item) => item.x === tile.x && item.y === tile.y);
+    if (!animal) {
+      pushEvent("Здесь нет животного.");
+      return;
+    }
+    colonist.task = "hunt";
+    colonist.goal = { x: animal.x, y: animal.y, animalId: animal.id };
+  }
 }
 
 canvas.addEventListener("click", (event) => {
@@ -1141,6 +1392,15 @@ canvas.addEventListener("click", (event) => {
   const position = getMousePosition(event);
   const tile = screenToGrid(position.x, position.y);
   if (tile.x < 0 || tile.y < 0 || tile.x >= MAP_SIZE || tile.y >= MAP_SIZE) return;
+  if (selectAnimalAt(tile)) {
+    return;
+  }
+  if (selectResourceAt(tile)) {
+    return;
+  }
+  if (selectStructureAt(tile)) {
+    return;
+  }
   if (selectColonistAt(tile)) return;
   if (gameState.selectedTab === "build") {
     handleBuildClick(tile);
@@ -1574,6 +1834,52 @@ function updateSelectedUnit() {
   selectedUnitLabel.textContent = `${unit.name}: ${unit.task} · голод ${unit.hunger.toFixed(0)} · отдых ${unit.rest.toFixed(0)}`;
 }
 
+function updateInfoPanel() {
+  if (!gameState.selectedObject) {
+    infoPanel.innerHTML = `<p class="muted">Выберите объект, чтобы увидеть детали.</p>`;
+    return;
+  }
+  const { type, data } = gameState.selectedObject;
+  if (type === "colonist") {
+    infoPanel.innerHTML = `<h4>${data.name}</h4>
+      <p>Пешка · ${data.role}</p>
+      <p class="muted">Колонист, выполняющий задания.</p>
+      <ul>
+        <li>Голод: ${data.hunger.toFixed(0)}</li>
+        <li>Отдых: ${data.rest.toFixed(0)}</li>
+        <li>Настроение: ${data.mood.toFixed(0)}</li>
+      </ul>`;
+  } else if (type === "animal") {
+    const animal = ANIMALS.find((item) => item.id === data.type);
+    infoPanel.innerHTML = `<h4>${data.name}</h4>
+      <p>Животное · ${animal?.behavior ?? "неизвестно"}</p>
+      <p class="muted">${animal?.description ?? "Нет данных."}</p>
+      <ul>
+        <li>Еда: ${animal?.food ?? "?"}</li>
+        <li>Опасность: ${animal?.danger ?? "?"}</li>
+        <li>Побег: ${animal?.fleeChance ?? "?"}</li>
+      </ul>`;
+  } else if (type === "resource") {
+    const resource = RESOURCE_DEFS[data.type];
+    infoPanel.innerHTML = `<h4>${resource?.name ?? data.type}</h4>
+      <p>Ресурсный узел</p>
+      <p class="muted">${resource?.description ?? "Нет данных."}</p>
+      <ul>
+        <li>Остаток: ${data.amount}</li>
+        <li>Восстановление: ${data.regrow.toFixed(1)}</li>
+        <li>Добыча: ${resource?.yields ?? "?"}</li>
+      </ul>`;
+  } else if (type === "structure") {
+    const def = BUILDING_DEFS[data.type];
+    infoPanel.innerHTML = `<h4>${def?.label ?? data.type}</h4>
+      <p>Постройка</p>
+      <p class="muted">${def?.description ?? "Нет данных."}</p>
+      <ul>
+        <li>Состояние: ${data.disabled ? "разбирается" : "активна"}</li>
+      </ul>`;
+  }
+}
+
 function updateZoomLabel() {
   zoomLevelLabel.textContent = `${Math.round(gameState.zoom * 100)}%`;
 }
@@ -1735,6 +2041,7 @@ function renderLoop() {
   updateHud();
   updateOrders();
   updateSelectedUnit();
+  updateInfoPanel();
   requestAnimationFrame(renderLoop);
 }
 
