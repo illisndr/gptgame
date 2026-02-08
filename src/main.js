@@ -87,7 +87,8 @@ const gameState = {
     beaconBuilt: false,
     daysAfterBeacon: 0
   },
-  selectedColonists: []
+  selectedColonists: [],
+  started: false
 };
 
 const camera = {
@@ -666,6 +667,11 @@ function drawOrders() {
 
 function render() {
   ctx.clearRect(0, 0, camera.viewWidth, camera.viewHeight);
+  if (!gameState.started) {
+    ctx.fillStyle = "#0b1018";
+    ctx.fillRect(0, 0, camera.viewWidth, camera.viewHeight);
+    return;
+  }
   ctx.save();
   ctx.translate(camera.offsetX, camera.offsetY);
   ctx.scale(gameState.zoom, gameState.zoom);
@@ -715,6 +721,7 @@ function init() {
   gameState.day = 1;
   gameState.selectedColonistId = null;
   gameState.story = { chapter: 1, beaconBuilt: false, daysAfterBeacon: 0 };
+  gameState.started = true;
   pushEvent("Колония высадилась. Удачи!");
   updateTasks();
 }
@@ -1015,7 +1022,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 function renderLoop() {
-  update(1 / TICK_RATE);
+  if (gameState.started) {
+    update(1 / TICK_RATE);
+  }
   render();
   updateHud();
   updateOrders();
