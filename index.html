@@ -423,6 +423,7 @@
         </div>
         <div class="menu-actions secondary">
           <button id="menu-settings">Настройки</button>
+          <button id="menu-saves">Сохранения</button>
           <button id="menu-info">Информация</button>
           <button id="menu-exit">Выход</button>
         </div>
@@ -459,6 +460,20 @@
         <p id="system-body" class="subtitle"></p>
         <div class="modal-actions">
           <button id="system-close">Закрыть</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal" id="save-load-modal">
+      <div class="modal-card modal-wide">
+        <h2 id="save-load-title">Сохранения</h2>
+        <p class="subtitle">Выбери слот, чтобы сохранить или загрузить игру.</p>
+        <div class="save-input">
+          <label for="save-name">Название слота</label>
+          <input id="save-name" type="text" placeholder="Например: День 3 — надежда" />
+        </div>
+        <div id="save-slots" class="save-slots"></div>
+        <div class="modal-actions">
+          <button id="save-load-close">Закрыть</button>
         </div>
       </div>
     </div>
