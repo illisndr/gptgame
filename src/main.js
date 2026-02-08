@@ -953,6 +953,11 @@ canvas.addEventListener("click", (event) => {
     handleCommandClick(tile);
     return;
   }
+  if (gameState.selectedColonistId) {
+    gameState.commandMode = "move";
+    handleCommandClick(tile);
+    return;
+  }
   pushEvent("Выбери вкладку «Постройки» или «Колонисты» для действий.");
 });
 
@@ -1329,6 +1334,15 @@ function resolveExpedition() {
     `Экспедиция в ${biome.name}: ${outcome === "success" ? "успех" : outcome === "partial" ? "частично" : "провал"}.`
   );
 
+  const lootSummary = Object.entries(loot)
+    .map(([resource, amount]) => `${resource}+${amount}`)
+    .join(", ");
+  if (lootSummary) {
+    pushEvent(`Экспедиция: ${biome.name}, добыча: ${lootSummary}.`);
+  } else {
+    pushEvent(`Экспедиция: ${biome.name}, добычи нет, но последствия остаются.`);
+  }
+
   if (!gameState.storyFlags.swampHint && biome.id === "forest") {
     gameState.storyFlags.swampHint = true;
     logExpedition("Открыт биом: Болото.");
@@ -1416,6 +1430,8 @@ function startGame(storyMode) {
   }
   setupModal.classList.remove("show");
   init();
+  renderBiomes();
+  updateExpeditionPrepUI();
 }
 
 window.addEventListener("resize", resizeCanvas);
