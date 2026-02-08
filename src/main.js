@@ -60,6 +60,22 @@ const resourceValues = {
   rock: { stone: 4 }
 };
 
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function shadeColor(hex, amount) {
+  const num = parseInt(hex.replace("#", ""), 16);
+  const r = clamp(((num >> 16) & 0xff) + amount, 0, 255);
+  const g = clamp(((num >> 8) & 0xff) + amount, 0, 255);
+  const b = clamp((num & 0xff) + amount, 0, 255);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 const RESOURCE_DEFS = {
   tree: { name: "Дерево", description: "Источник древесины для строительства.", yields: "дерево" },
   berries: { name: "Ягодник", description: "Быстрый источник еды, но истощается.", yields: "еда" },
@@ -967,27 +983,32 @@ function update(delta) {
 function drawTile(x, y, color, terrain) {
   const { x: screenX, y: screenY } = gridToScreen(x, y);
   const detail = gameState.map[x][y].detail;
-  const shade = Math.floor(12 * detail);
-  const tint = `rgba(0, 0, 0, ${0.04 + detail * 0.08})`;
-  ctx.fillStyle = color;
+  const shade = Math.floor(16 * detail);
+  const tint = `rgba(0, 0, 0, ${0.05 + detail * 0.08})`;
+  const variant = Math.floor(detail * 3);
+  const base = shadeColor(color, variant === 0 ? 6 : variant === 1 ? -6 : 0);
+  ctx.fillStyle = base;
   ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
   ctx.fillStyle = tint;
   ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
-  ctx.strokeStyle = "rgba(12, 18, 28, 0.35)";
-  ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+  ctx.strokeStyle = "rgba(12, 18, 28, 0.18)";
+  ctx.strokeRect(screenX + 0.5, screenY + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
 
   if (terrain === "grass") {
-    ctx.strokeStyle = "rgba(120, 185, 120, 0.25)";
+    ctx.strokeStyle = "rgba(120, 185, 120, 0.3)";
     ctx.beginPath();
-    ctx.moveTo(screenX + 6, screenY + 10);
-    ctx.lineTo(screenX + 12, screenY + 6);
+    ctx.moveTo(screenX + 5, screenY + 10);
+    ctx.lineTo(screenX + 11, screenY + 6);
     ctx.moveTo(screenX + 18, screenY + 20);
-    ctx.lineTo(screenX + 24, screenY + 14);
+    ctx.lineTo(screenX + 25, screenY + 14);
+    ctx.moveTo(screenX + 8, screenY + 22);
+    ctx.lineTo(screenX + 12, screenY + 18);
     ctx.stroke();
   }
 
   if (terrain === "water") {
-    ctx.strokeStyle = "rgba(110, 180, 230, 0.45)";
+    const wave = 0.5 + 0.5 * Math.sin((x + y + gameState.time) * 0.6);
+    ctx.strokeStyle = `rgba(110, 180, 230, ${0.35 + wave * 0.2})`;
     ctx.beginPath();
     ctx.arc(screenX + 10, screenY + 12, 6, 0, Math.PI * 2);
     ctx.arc(screenX + 22, screenY + 20, 5, 0, Math.PI * 2);
@@ -995,21 +1016,38 @@ function drawTile(x, y, color, terrain) {
   }
 
   if (terrain === "rock") {
-    ctx.fillStyle = `rgba(140, 140, 140, ${0.08 + detail * 0.1})`;
+    ctx.fillStyle = `rgba(140, 140, 140, ${0.1 + detail * 0.12})`;
     ctx.fillRect(screenX + 6, screenY + 6, 6 + shade, 4 + shade);
+    ctx.strokeStyle = "rgba(220, 230, 240, 0.15)";
+    ctx.beginPath();
+    ctx.moveTo(screenX + 8, screenY + 18);
+    ctx.lineTo(screenX + 18, screenY + 12);
+    ctx.stroke();
   }
 }
 
 function drawResource(node) {
   const { x: screenX, y: screenY } = gridToScreen(node.x, node.y);
   if (node.type === "tree") {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+    ctx.beginPath();
+    ctx.ellipse(screenX + 16, screenY + 24, 10, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = resourcePalette.tree.trunk;
-    ctx.fillRect(screenX + 14, screenY + 14, 4, 10);
-    ctx.fillStyle = resourcePalette.tree.crown;
+    ctx.fillRect(screenX + 14, screenY + 12, 4, 12);
+    ctx.fillStyle = shadeColor(resourcePalette.tree.crown, node.amount > 0 ? 8 : -10);
     ctx.beginPath();
     ctx.arc(screenX + 16, screenY + 10, 10, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.beginPath();
+    ctx.arc(screenX + 12, screenY + 6, 4, 0, Math.PI * 2);
+    ctx.fill();
   } else if (node.type === "berries") {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+    ctx.beginPath();
+    ctx.ellipse(screenX + 16, screenY + 24, 9, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = resourcePalette.berries.bush;
     ctx.beginPath();
     ctx.arc(screenX + 16, screenY + 18, 9, 0, Math.PI * 2);
@@ -1020,6 +1058,10 @@ function drawResource(node) {
     ctx.arc(screenX + 20, screenY + 20, 2, 0, Math.PI * 2);
     ctx.fill();
   } else if (node.type === "rock") {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.beginPath();
+    ctx.ellipse(screenX + 16, screenY + 23, 8, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = resourcePalette.rock.base;
     ctx.beginPath();
     ctx.moveTo(screenX + 8, screenY + 22);
@@ -1035,13 +1077,34 @@ function drawResource(node) {
 
 function drawAnimal(animal) {
   const { x: screenX, y: screenY } = gridToScreen(animal.x, animal.y);
-  const color = animal.type === "boar" ? "#9b5e34" : animal.type === "deer" ? "#c8a67a" : "#c7d2e6";
+  const wobble = Math.sin((animal.x + animal.y + gameState.time) * 0.8) * 0.6;
+  const isAggressive = animal.type === "boar";
+  const color = isAggressive ? "#b5563a" : animal.type === "deer" ? "#c7a172" : "#cbd7ea";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+  ctx.beginPath();
+  ctx.ellipse(screenX + 16, screenY + 23, isAggressive ? 8 : 7, 3.2, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(screenX + 16, screenY + 16, 6, 0, Math.PI * 2);
+  if (isAggressive) {
+    ctx.moveTo(screenX + 10, screenY + 10 + wobble);
+    ctx.lineTo(screenX + 22, screenY + 8 + wobble);
+    ctx.lineTo(screenX + 26, screenY + 18 + wobble);
+    ctx.lineTo(screenX + 12, screenY + 20 + wobble);
+    ctx.closePath();
+  } else {
+    ctx.arc(screenX + 16, screenY + 15 + wobble, 6, 0, Math.PI * 2);
+  }
   ctx.fill();
-  ctx.fillStyle = "rgba(0,0,0,0.2)";
-  ctx.fillRect(screenX + 12, screenY + 22, 8, 2);
+  if (isAggressive) {
+    ctx.strokeStyle = "rgba(255, 220, 200, 0.8)";
+    ctx.beginPath();
+    ctx.moveTo(screenX + 12, screenY + 14 + wobble);
+    ctx.lineTo(screenX + 8, screenY + 18 + wobble);
+    ctx.moveTo(screenX + 20, screenY + 14 + wobble);
+    ctx.lineTo(screenX + 24, screenY + 18 + wobble);
+    ctx.stroke();
+  }
 }
 
 function drawStructure(structure) {
@@ -1058,11 +1121,17 @@ function drawStructure(structure) {
     beacon: "#f0b35d"
   };
   const base = palette[structure.type] ?? "#d1a94b";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+  ctx.beginPath();
+  ctx.ellipse(screenX + 16, screenY + 24, 12, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = base;
   ctx.fillRect(screenX + 5, screenY + 8, TILE_SIZE - 10, TILE_SIZE - 12);
 
-  ctx.fillStyle = "rgba(10, 14, 20, 0.25)";
+  ctx.fillStyle = "rgba(10, 14, 20, 0.22)";
   ctx.fillRect(screenX + 7, screenY + 20, TILE_SIZE - 14, 4);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+  ctx.fillRect(screenX + 6, screenY + 10, TILE_SIZE - 12, 3);
 
   if (structure.type === "camp") {
     ctx.fillStyle = "#f2f1e6";
@@ -1081,12 +1150,18 @@ function drawStructure(structure) {
     ctx.moveTo(screenX + 8, screenY + 18);
     ctx.lineTo(screenX + 24, screenY + 18);
     ctx.stroke();
+    ctx.fillStyle = "rgba(110, 180, 120, 0.4)";
+    ctx.fillRect(screenX + 8, screenY + 13, 16, 2);
   }
   if (structure.type === "well") {
     ctx.strokeStyle = "rgba(210, 230, 245, 0.8)";
     ctx.beginPath();
     ctx.arc(screenX + 16, screenY + 16, 6, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.fillStyle = "rgba(80, 160, 200, 0.4)";
+    ctx.beginPath();
+    ctx.arc(screenX + 16, screenY + 16, 3, 0, Math.PI * 2);
+    ctx.fill();
   }
   if (structure.type === "beacon") {
     ctx.fillStyle = "#f0f0f0";
@@ -1114,28 +1189,39 @@ function drawStructure(structure) {
 
 function drawColonist(colonist) {
   const { x: screenX, y: screenY } = gridToScreen(colonist.x, colonist.y);
+  const isInjured = colonist.rest < 20 || colonist.hunger < 15;
+  const isResting = colonist.task === "rest";
+  const isWorking = ["gather", "deliver", "build", "craft", "hunt", "dismantle"].includes(colonist.task);
+  const stateColor = isInjured ? "#f87171" : isResting ? "#60a5fa" : isWorking ? "#34d399" : "#fbbf24";
+  const bob = Math.sin((gameState.time * 2 + colonist.x + colonist.y) * 0.8) * 1.2;
+  const yOffset = isResting ? 2 : bob;
   if (colonist.id === gameState.selectedColonistId) {
     ctx.strokeStyle = "#f2c14e";
     ctx.lineWidth = 2;
     ctx.strokeRect(screenX + 1, screenY + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   }
 
-  ctx.fillStyle = "#2f3e58";
+  ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
   ctx.beginPath();
-  ctx.roundRect(screenX + 10, screenY + 16, 12, 12, 3);
+  ctx.ellipse(screenX + 16, screenY + 25, 8, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#24324b";
+  ctx.beginPath();
+  ctx.roundRect(screenX + 9, screenY + 15 + yOffset, 14, 12, 3);
   ctx.fill();
 
   ctx.fillStyle = "#f6d3b3";
   ctx.beginPath();
-  ctx.arc(screenX + 16, screenY + 12, 5, 0, Math.PI * 2);
+  ctx.arc(screenX + 16, screenY + 11 + yOffset, 5, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#5f7fb0";
+  ctx.fillStyle = stateColor;
   ctx.beginPath();
-  ctx.moveTo(screenX + 10, screenY + 20);
-  ctx.lineTo(screenX + 22, screenY + 20);
-  ctx.lineTo(screenX + 24, screenY + 28);
-  ctx.lineTo(screenX + 8, screenY + 28);
+  ctx.moveTo(screenX + 9, screenY + 19 + yOffset);
+  ctx.lineTo(screenX + 23, screenY + 19 + yOffset);
+  ctx.lineTo(screenX + 24, screenY + 27 + yOffset);
+  ctx.lineTo(screenX + 8, screenY + 27 + yOffset);
   ctx.closePath();
   ctx.fill();
 
@@ -1147,7 +1233,8 @@ function drawColonist(colonist) {
 function drawOrders() {
   for (const order of gameState.buildOrders) {
     const { x: screenX, y: screenY } = gridToScreen(order.x, order.y);
-    ctx.strokeStyle = "#5fe1ff";
+    const pulse = 0.5 + 0.5 * Math.sin((gameState.time + order.x + order.y) * 0.8);
+    ctx.strokeStyle = `rgba(95, 225, 255, ${0.4 + pulse * 0.4})`;
     ctx.setLineDash([4, 4]);
     ctx.strokeRect(screenX + 3, screenY + 3, TILE_SIZE - 6, TILE_SIZE - 6);
     ctx.setLineDash([]);
