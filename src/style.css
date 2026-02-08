@@ -438,6 +438,7 @@ footer {
   pointer-events: none;
   transition: opacity 0.2s ease;
   padding: 24px;
+  z-index: 50;
 }
 
 .modal.show {
