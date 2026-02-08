@@ -24,6 +24,7 @@ header {
   padding: 16px 24px;
   background: #151923;
   border-bottom: 1px solid #2a3142;
+  box-shadow: 0 6px 20px rgba(4, 8, 16, 0.4);
 }
 
 header h1 {
@@ -65,6 +66,24 @@ main {
   border-radius: 12px;
   padding: 12px;
   border: 1px solid #273043;
+  box-shadow: 0 6px 16px rgba(6, 10, 18, 0.35);
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #101623;
+  border-radius: 10px;
+  border: 1px solid #273043;
+  font-size: 12px;
+  color: #c7d2e6;
+}
+
+.zoom-controls span {
+  min-width: 48px;
+  text-align: center;
 }
 
 .tabs {
@@ -89,12 +108,23 @@ main {
   border-color: #2f7dd1;
 }
 
+.game-wrapper {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: radial-gradient(circle at top, #0f192a, #0b0f17 60%);
+  border-radius: 16px;
+  border: 1px solid #1e2636;
+}
+
 canvas {
   width: 100%;
   height: auto;
   border-radius: 12px;
   background: #0b1018;
   border: 1px solid #273043;
+  max-width: 1100px;
+  box-shadow: 0 12px 24px rgba(5, 10, 18, 0.6);
 }
 
 .panel {
@@ -105,6 +135,7 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-shadow: 0 6px 16px rgba(6, 10, 18, 0.35);
 }
 
 .panel button,
@@ -130,6 +161,14 @@ canvas {
   display: grid;
   gap: 6px;
   font-size: 13px;
+}
+
+.hint-list {
+  margin: 0;
+  padding-left: 16px;
+  color: #c7d2e6;
+  display: grid;
+  gap: 6px;
 }
 
 .panel-section {
@@ -174,10 +213,74 @@ canvas {
   color: #a8b2c4;
 }
 
+.command-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.command-option {
+  background: #1c2230;
+  border: 1px solid #2a3142;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #e7edf6;
+  cursor: pointer;
+  text-align: left;
+}
+
+.command-option.active {
+  border-color: #f2c14e;
+  box-shadow: 0 0 0 1px #f2c14e inset;
+}
+
 footer {
   padding: 12px 24px;
   border-top: 1px solid #2a3142;
   background: #0f1115;
   font-size: 12px;
   color: #a8b2c4;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 10, 18, 0.7);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.modal.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  background: #151923;
+  border-radius: 16px;
+  padding: 24px;
+  width: min(420px, 90vw);
+  border: 1px solid #273043;
+  box-shadow: 0 18px 36px rgba(6, 10, 18, 0.6);
+  display: grid;
+  gap: 16px;
+}
+
+.modal-card ol {
+  margin: 0;
+  padding-left: 18px;
+  color: #c7d2e6;
+  display: grid;
+  gap: 8px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.modal-actions button {
+  flex: 1;
 }
