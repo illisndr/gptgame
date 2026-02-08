@@ -2442,9 +2442,7 @@ document.addEventListener("keydown", (event) => {
     spaceDown = true;
     gameState.paused = !gameState.paused;
     togglePauseButton.textContent = gameState.paused ? "Продолжить" : "Пауза";
-    if (gameState.paused) {
-      openPauseMenu();
-    } else {
+    if (!gameState.paused) {
       closePauseMenu();
     }
   }
