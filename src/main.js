@@ -833,21 +833,73 @@ function updateStructures(delta) {
         pushEvent("Колодец дал воду (+2).");
       }
     }
-    if (structure.type === "lumberyard") {
-      structure.timer = (structure.timer ?? 0) + delta;
-      if (structure.timer >= 22) {
-        structure.timer = 0;
-        gameState.resources.wood += 3;
-        pushEvent("Лесопилка произвела дерево (+3).");
-      }
+  if (structure.type === "lumberyard") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 22) {
+      structure.timer = 0;
+      gameState.resources.wood += 3;
+      pushEvent("Лесопилка произвела дерево (+3).");
     }
-    if (structure.type === "quarry") {
-      structure.timer = (structure.timer ?? 0) + delta;
-      if (structure.timer >= 26) {
-        structure.timer = 0;
-        gameState.resources.stone += 3;
-        pushEvent("Карьер дал камень (+3).");
-      }
+  }
+  if (structure.type === "quarry") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 26) {
+      structure.timer = 0;
+      gameState.resources.stone += 3;
+      pushEvent("Карьер дал камень (+3).");
+    }
+  }
+  if (structure.type === "greenhouse") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 24) {
+      structure.timer = 0;
+      gameState.resources.food += 2;
+      pushEvent("Оранжерея дала урожай (+2 еды).");
+    }
+  }
+  if (structure.type === "kitchen") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 20) {
+      structure.timer = 0;
+      gameState.resources.food += 1;
+      pushEvent("Кухня улучшила пайки (+1 еды).");
+    }
+  }
+  if (structure.type === "sauna") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 30) {
+      structure.timer = 0;
+      gameState.colonists.forEach((col) => {
+        col.rest = Math.min(100, col.rest + 4);
+        col.mood = Math.min(100, col.mood + 2);
+      });
+      pushEvent("Сауна подняла настроение и отдых.");
+    }
+  }
+  if (structure.type === "infirmary") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 28) {
+      structure.timer = 0;
+      gameState.colonists.forEach((col) => {
+        col.rest = Math.min(100, col.rest + 5);
+      });
+      pushEvent("Лазарет ускорил восстановление.");
+    }
+  }
+  if (structure.type === "hunting-lodge") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 26) {
+      structure.timer = 0;
+      gameState.resources.food += 1;
+      pushEvent("Охотничий домик дал провизию (+1 еды).");
+    }
+  }
+  if (structure.type === "corral") {
+    structure.timer = (structure.timer ?? 0) + delta;
+    if (structure.timer >= 32) {
+      structure.timer = 0;
+      gameState.resources.food += 1;
+      pushEvent("Загон дал припасы (+1 еды).");
     }
   }
 }
@@ -968,24 +1020,64 @@ const BUILDING_DEFS = {
     work: 12,
     salvage: { wood: 5, stone: 5 }
   },
-  wall: {
-    label: "стена",
+  "wood-wall": {
+    label: "деревянная стена",
+    description: "Быстрая преграда, блокирует проход.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    blocksMovement: true,
+    cost: { wood: 4 },
+    work: 3,
+    salvage: { wood: 2 },
+    effects: ["защита: базовая"]
+  },
+  "stone-wall": {
+    label: "каменная стена",
     description: "Прочная преграда, блокирует проход.",
     category: "walls",
     size: { w: 1, h: 1 },
     blocksMovement: true,
     cost: { stone: 4 },
     work: 4,
-    salvage: { stone: 2 }
+    salvage: { stone: 2 },
+    effects: ["защита: высокая"]
+  },
+  palisade: {
+    label: "палисад",
+    description: "Высокое деревянное ограждение.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    blocksMovement: true,
+    cost: { wood: 6 },
+    work: 4,
+    salvage: { wood: 3 }
   },
   fence: {
     label: "ограждение",
     description: "Лёгкая преграда, не мешает обзору.",
     category: "walls",
     size: { w: 1, h: 1 },
-    cost: { wood: 4 },
+    cost: { wood: 3 },
     work: 3,
     salvage: { wood: 2 }
+  },
+  "stone-fence": {
+    label: "каменная ограда",
+    description: "Низкая каменная ограда.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    cost: { stone: 3 },
+    work: 3,
+    salvage: { stone: 1 }
+  },
+  "decor-fence": {
+    label: "декор-ограда",
+    description: "Декоративная ограда для эстетики.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    cost: { wood: 2, stone: 1 },
+    work: 2,
+    salvage: { wood: 1 }
   },
   gate: {
     label: "ворота",
@@ -996,6 +1088,27 @@ const BUILDING_DEFS = {
     work: 4,
     salvage: { wood: 3, stone: 1 }
   },
+  "arch-gate": {
+    label: "арка-ворота",
+    description: "Надёжный вход с каменной аркой.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    cost: { stone: 4, tools: 1 },
+    work: 5,
+    salvage: { stone: 2 }
+  },
+  "light-fence": {
+    label: "световая ограда",
+    description: "Ограда с мягким освещением.",
+    category: "walls",
+    size: { w: 1, h: 1 },
+    cost: { wood: 3, tools: 1 },
+    work: 3,
+    salvage: { wood: 1 },
+    lightRadius: 1.6,
+    lightColor: "rgba(255, 200, 140, 0.3)",
+    effects: ["свет: периметр +"]
+  },
   bed: {
     label: "кровать",
     description: "Повышает комфорт отдыха.",
@@ -1003,7 +1116,8 @@ const BUILDING_DEFS = {
     size: { w: 2, h: 1 },
     cost: { wood: 6, food: 2 },
     work: 5,
-    salvage: { wood: 3 }
+    salvage: { wood: 3 },
+    effects: ["комфорт: отдых +"]
   },
   table: {
     label: "стол",
@@ -1012,7 +1126,8 @@ const BUILDING_DEFS = {
     size: { w: 2, h: 1 },
     cost: { wood: 6 },
     work: 4,
-    salvage: { wood: 3 }
+    salvage: { wood: 3 },
+    effects: ["комфорт: еда +"]
   },
   chair: {
     label: "стул",
@@ -1023,6 +1138,55 @@ const BUILDING_DEFS = {
     work: 3,
     salvage: { wood: 1 }
   },
+  wardrobe: {
+    label: "шкаф",
+    description: "Улучшает порядок и комфорт.",
+    category: "furniture",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6 },
+    work: 3,
+    salvage: { wood: 3 },
+    effects: ["комфорт: порядок +"]
+  },
+  chest: {
+    label: "сундук",
+    description: "Удобное хранение рядом с жильём.",
+    category: "furniture",
+    size: { w: 1, h: 1 },
+    cost: { wood: 4, tools: 1 },
+    work: 3,
+    salvage: { wood: 2 }
+  },
+  carpet: {
+    label: "ковер",
+    description: "Мягкий декор для уюта.",
+    category: "furniture",
+    size: { w: 2, h: 1 },
+    cost: { wood: 2, food: 2 },
+    work: 2,
+    salvage: { wood: 1 },
+    effects: ["комфорт: уют +"]
+  },
+  painting: {
+    label: "картина",
+    description: "Декор повышает мораль.",
+    category: "furniture",
+    size: { w: 1, h: 1 },
+    cost: { wood: 2, tools: 1 },
+    work: 2,
+    salvage: { wood: 1 },
+    effects: ["мораль: вдохновение +"]
+  },
+  bookshelf: {
+    label: "книжный шкаф",
+    description: "Улучшает обучение и досуг.",
+    category: "furniture",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6, tools: 2 },
+    work: 4,
+    salvage: { wood: 3 },
+    effects: ["мораль: знания +"]
+  },
   torch: {
     label: "факел",
     description: "Освещает соседние клетки.",
@@ -1032,7 +1196,8 @@ const BUILDING_DEFS = {
     work: 3,
     salvage: { wood: 2 },
     lightRadius: 2.2,
-    lightColor: "rgba(255, 183, 92, 0.45)"
+    lightColor: "rgba(255, 183, 92, 0.45)",
+    effects: ["свет: комфорт +"]
   },
   lamp: {
     label: "лампа",
@@ -1043,7 +1208,131 @@ const BUILDING_DEFS = {
     work: 5,
     salvage: { wood: 2, stone: 1 },
     lightRadius: 3.2,
-    lightColor: "rgba(180, 210, 255, 0.4)"
+    lightColor: "rgba(180, 210, 255, 0.4)",
+    effects: ["свет: безопасность +"]
+  },
+  lantern: {
+    label: "фонарь",
+    description: "Мягкий свет для дорожек.",
+    category: "lights",
+    size: { w: 1, h: 1 },
+    cost: { wood: 3, tools: 1 },
+    work: 3,
+    salvage: { wood: 1 },
+    lightRadius: 2.4,
+    lightColor: "rgba(255, 210, 150, 0.35)",
+    effects: ["свет: комфорт +"]
+  },
+  "street-lamp": {
+    label: "уличный фонарь",
+    description: "Стабильный свет для периметра.",
+    category: "lights",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6, stone: 3, tools: 2 },
+    work: 5,
+    salvage: { wood: 2, stone: 1 },
+    lightRadius: 3.6,
+    lightColor: "rgba(200, 220, 255, 0.35)",
+    effects: ["свет: безопасность +"]
+  },
+  "light-tower": {
+    label: "световая башня",
+    description: "Дальний свет для территории.",
+    category: "lights",
+    size: { w: 1, h: 2 },
+    cost: { stone: 10, tools: 4 },
+    work: 8,
+    salvage: { stone: 5 },
+    lightRadius: 4.8,
+    lightColor: "rgba(200, 230, 255, 0.35)",
+    effects: ["свет: обзор +"]
+  },
+  kitchen: {
+    label: "кухня",
+    description: "Ускоряет приготовление пищи.",
+    category: "functional",
+    size: { w: 2, h: 1 },
+    cost: { wood: 8, stone: 4 },
+    work: 6,
+    salvage: { wood: 4, stone: 2 },
+    effects: ["еда: эффективность +"]
+  },
+  forge: {
+    label: "кузница",
+    description: "Улучшает производство инструментов.",
+    category: "functional",
+    size: { w: 2, h: 1 },
+    cost: { wood: 6, stone: 8 },
+    work: 7,
+    salvage: { wood: 3, stone: 4 },
+    effects: ["ремесло: скорость +"]
+  },
+  carpenter: {
+    label: "столярка",
+    description: "Повышает эффективность дерева.",
+    category: "functional",
+    size: { w: 2, h: 1 },
+    cost: { wood: 10, stone: 4 },
+    work: 6,
+    salvage: { wood: 5, stone: 2 },
+    effects: ["дерево: эффективность +"]
+  },
+  greenhouse: {
+    label: "оранжерея",
+    description: "Стабильная еда вне сезона.",
+    category: "functional",
+    size: { w: 2, h: 2 },
+    cost: { wood: 8, water: 4 },
+    work: 7,
+    salvage: { wood: 4 },
+    effects: ["еда: стабильность +"]
+  },
+  pantry: {
+    label: "кладовая",
+    description: "Упрощает хранение еды.",
+    category: "functional",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6, stone: 2 },
+    work: 4,
+    salvage: { wood: 3 }
+  },
+  infirmary: {
+    label: "лазарет",
+    description: "Ускоряет восстановление.",
+    category: "functional",
+    size: { w: 2, h: 1 },
+    cost: { wood: 8, tools: 2 },
+    work: 6,
+    salvage: { wood: 4 },
+    effects: ["здоровье: восстановление +"]
+  },
+  sauna: {
+    label: "сауна",
+    description: "Повышает мораль и отдых.",
+    category: "functional",
+    size: { w: 2, h: 1 },
+    cost: { wood: 6, water: 4 },
+    work: 5,
+    salvage: { wood: 3 },
+    effects: ["мораль: отдых +"]
+  },
+  "hunting-lodge": {
+    label: "охотничий домик",
+    description: "Поддерживает охоту и заготовки.",
+    category: "functional",
+    size: { w: 2, h: 1 },
+    cost: { wood: 8, stone: 2 },
+    work: 5,
+    salvage: { wood: 4 }
+  },
+  corral: {
+    label: "загон",
+    description: "Безопасное место для животных.",
+    category: "functional",
+    size: { w: 2, h: 2 },
+    cost: { wood: 6 },
+    work: 4,
+    salvage: { wood: 3 }
   },
   banner: {
     label: "знамя",
@@ -1052,6 +1341,95 @@ const BUILDING_DEFS = {
     size: { w: 1, h: 1 },
     cost: { wood: 2, food: 2 },
     work: 3,
+    salvage: { wood: 1 },
+    effects: ["мораль: символ +"]
+  },
+  gazebo: {
+    label: "беседка",
+    description: "Место отдыха для колонистов.",
+    category: "decor",
+    size: { w: 2, h: 2 },
+    cost: { wood: 10 },
+    work: 6,
+    salvage: { wood: 5 },
+    effects: ["мораль: отдых +"]
+  },
+  fountain: {
+    label: "фонтан",
+    description: "Поднимает настроение.",
+    category: "decor",
+    size: { w: 2, h: 2 },
+    cost: { stone: 6, water: 2 },
+    work: 6,
+    salvage: { stone: 3 },
+    effects: ["мораль: красота +"]
+  },
+  statue: {
+    label: "скульптура",
+    description: "Заметный символ колонии.",
+    category: "decor",
+    size: { w: 1, h: 2 },
+    cost: { stone: 8 },
+    work: 6,
+    salvage: { stone: 4 },
+    effects: ["мораль: гордость +"]
+  },
+  garden: {
+    label: "сад",
+    description: "Зелёная зона для прогулок.",
+    category: "decor",
+    size: { w: 2, h: 2 },
+    cost: { wood: 4, water: 2 },
+    work: 4,
+    salvage: { wood: 2 },
+    effects: ["комфорт: природа +"]
+  },
+  watchpost: {
+    label: "пост наблюдения",
+    description: "Увеличивает обзор территории.",
+    category: "infrastructure",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6, stone: 2 },
+    work: 4,
+    salvage: { wood: 3 }
+  },
+  "signal-tower": {
+    label: "сигнальная башня",
+    description: "Передаёт сигналы на дальнюю связь.",
+    category: "infrastructure",
+    size: { w: 1, h: 2 },
+    cost: { wood: 8, stone: 6, tools: 2 },
+    work: 7,
+    salvage: { wood: 4, stone: 3 }
+  },
+  "light-beacon": {
+    label: "световой маяк",
+    description: "Освещает дальние участки.",
+    category: "infrastructure",
+    size: { w: 1, h: 2 },
+    cost: { stone: 10, tools: 4 },
+    work: 8,
+    salvage: { stone: 5 },
+    lightRadius: 5.2,
+    lightColor: "rgba(200, 230, 255, 0.35)",
+    effects: ["свет: дальний +"]
+  },
+  "guard-post": {
+    label: "караульный пост",
+    description: "Точка контроля периметра.",
+    category: "infrastructure",
+    size: { w: 1, h: 1 },
+    cost: { wood: 6, stone: 4 },
+    work: 4,
+    salvage: { wood: 3, stone: 2 }
+  },
+  "road-marker": {
+    label: "дорожный знак",
+    description: "Навигационный ориентир.",
+    category: "infrastructure",
+    size: { w: 1, h: 1 },
+    cost: { wood: 2 },
+    work: 2,
     salvage: { wood: 1 }
   }
 };
@@ -1310,15 +1688,47 @@ function drawStructure(structure) {
     quarry: "#707070",
     watch: "#8a7bd1",
     beacon: "#f0b35d",
-    wall: "#6e7076",
-    fence: "#8f6b4a",
+    "wood-wall": "#8f6b4a",
+    "stone-wall": "#6e7076",
+    palisade: "#7c5c43",
+    fence: "#9b7a5b",
+    "stone-fence": "#80838a",
+    "decor-fence": "#a38762",
     gate: "#a57b52",
+    "arch-gate": "#7b7e84",
+    "light-fence": "#d1a271",
     bed: "#8aa4c8",
     table: "#a57b52",
     chair: "#8f6b4a",
+    wardrobe: "#7e6a4a",
+    chest: "#7c5f3d",
+    carpet: "#a96a87",
+    painting: "#b07d5a",
+    bookshelf: "#6a5a45",
     torch: "#e07a45",
     lamp: "#78a6d8",
-    banner: "#b36a8b"
+    lantern: "#e8b86a",
+    "street-lamp": "#9bb6d8",
+    "light-tower": "#9fb8d9",
+    kitchen: "#c48a5a",
+    forge: "#7f6d6d",
+    carpenter: "#9b7a5b",
+    greenhouse: "#5f8f6a",
+    pantry: "#7c6b59",
+    infirmary: "#6d8fb0",
+    sauna: "#b47a4f",
+    "hunting-lodge": "#8a6a4a",
+    corral: "#9b845f",
+    banner: "#b36a8b",
+    gazebo: "#b08a5a",
+    fountain: "#6ea0b8",
+    statue: "#8c8f95",
+    garden: "#6fa36b",
+    watchpost: "#7a6b5a",
+    "signal-tower": "#7c7f85",
+    "light-beacon": "#7fa3c8",
+    "guard-post": "#7a6f60",
+    "road-marker": "#8f7a5b"
   };
   const base = palette[structure.type] ?? "#d1a94b";
   ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
@@ -2266,12 +2676,14 @@ function updateInfoPanel() {
         .map(([resource, amount]) => `${resource}: ${amount}`)
         .join(", ");
       const size = def.size ? `${def.size.w}x${def.size.h}` : "1x1";
+      const effects = def.effects?.length ? `<li>Эффекты: ${def.effects.join(", ")}</li>` : "";
       infoPanel.innerHTML = `<h4>${def.label}</h4>
         <p>Постройка · ${def.category}</p>
         <p class="muted">${def.description ?? "Нет данных."}</p>
         <ul>
           <li>Размер: ${size}</li>
           <li>Ресурсы: ${cost || "—"}</li>
+          ${effects}
           ${def.lightRadius ? `<li>Свет: радиус ${def.lightRadius}</li>` : ""}
         </ul>`;
       return;
@@ -2313,11 +2725,13 @@ function updateInfoPanel() {
       </ul>`;
   } else if (type === "structure") {
     const def = BUILDING_DEFS[data.type];
+    const effects = def?.effects?.length ? `<li>Эффекты: ${def.effects.join(", ")}</li>` : "";
     infoPanel.innerHTML = `<h4>${def?.label ?? data.type}</h4>
       <p>Постройка</p>
       <p class="muted">${def?.description ?? "Нет данных."}</p>
       <ul>
         <li>Состояние: ${data.disabled ? "разбирается" : "активна"}</li>
+        ${effects}
       </ul>`;
   }
 }
