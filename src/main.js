@@ -7,14 +7,13 @@ const eventsList = document.getElementById("events");
 const togglePauseButton = document.getElementById("toggle-pause");
 const speedButton = document.getElementById("speed");
 
-const TILE_WIDTH = 64;
-const TILE_HEIGHT = 32;
-const MAP_SIZE = 22;
+const TILE_SIZE = 32;
+const MAP_SIZE = 28;
 const TICK_RATE = 60;
 
 const mapOffset = {
-  x: canvas.width / 2,
-  y: 80
+  x: 24,
+  y: 24
 };
 
 const terrainPalette = {
@@ -50,25 +49,22 @@ const gameState = {
   nodes: [],
   buildOrders: [],
   structures: [],
-  colonists: []
+  colonists: [],
+  selectedTab: "overview",
+  selectedBuild: "camp"
 };
 
-function isoToScreen(x, y) {
+function gridToScreen(x, y) {
   return {
-    x: (x - y) * (TILE_WIDTH / 2) + mapOffset.x,
-    y: (x + y) * (TILE_HEIGHT / 2) + mapOffset.y
+    x: mapOffset.x + x * TILE_SIZE,
+    y: mapOffset.y + y * TILE_SIZE
   };
 }
 
-function screenToIso(x, y) {
-  const dx = x - mapOffset.x;
-  const dy = y - mapOffset.y;
-  const isoX = (dx / (TILE_WIDTH / 2) + dy / (TILE_HEIGHT / 2)) / 2;
-  const isoY = (dy / (TILE_HEIGHT / 2) - dx / (TILE_WIDTH / 2)) / 2;
-  return {
-    x: Math.floor(isoX),
-    y: Math.floor(isoY)
-  };
+function screenToGrid(x, y) {
+  const gridX = Math.floor((x - mapOffset.x) / TILE_SIZE);
+  const gridY = Math.floor((y - mapOffset.y) / TILE_SIZE);
+  return { x: gridX, y: gridY };
 }
 
 function createMap() {
@@ -191,18 +187,18 @@ function updateNeeds(colonist, delta) {
 function assignTask(colonist) {
   if (colonist.hunger < 35 && gameState.resources.food > 0) {
     colonist.task = "eat";
-    colonist.goal = { x: 11, y: 11 };
+    colonist.goal = { x: 14, y: 14 };
     return;
   }
   if (colonist.rest < 30) {
     const camp = gameState.structures.find((structure) => structure.type === "camp");
     colonist.task = "rest";
-    colonist.goal = camp ? { x: camp.x, y: camp.y } : { x: 11, y: 11 };
+    colonist.goal = camp ? { x: camp.x, y: camp.y } : { x: 14, y: 14 };
     return;
   }
   if (colonist.carry) {
     colonist.task = "haul";
-    colonist.goal = { x: 11, y: 11 };
+    colonist.goal = { x: 14, y: 14 };
     return;
   }
   const order = findClosestOrder(colonist.x, colonist.y);
@@ -268,7 +264,7 @@ function handleTask(colonist, delta) {
       const [type, amount] = Object.entries(gains)[0];
       colonist.carry = { type, amount };
       colonist.task = "haul";
-      colonist.goal = { x: 11, y: 11 };
+      colonist.goal = { x: 14, y: 14 };
       break;
     }
     case "deliver": {
@@ -299,7 +295,7 @@ function pushEvent(message) {
 }
 
 function tickEvents() {
-  if (Math.random() < 0.02) {
+  if (Math.random() < 0.004) {
     const roll = Math.random();
     if (roll < 0.35) {
       gameState.resources.food += 6;
@@ -337,66 +333,52 @@ function update(delta) {
 }
 
 function drawTile(x, y, color) {
-  const { x: screenX, y: screenY } = isoToScreen(x, y);
+  const { x: screenX, y: screenY } = gridToScreen(x, y);
   ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(screenX, screenY);
-  ctx.lineTo(screenX + TILE_WIDTH / 2, screenY + TILE_HEIGHT / 2);
-  ctx.lineTo(screenX, screenY + TILE_HEIGHT);
-  ctx.lineTo(screenX - TILE_WIDTH / 2, screenY + TILE_HEIGHT / 2);
-  ctx.closePath();
-  ctx.fill();
+  ctx.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+  ctx.strokeStyle = "rgba(15, 20, 30, 0.3)";
+  ctx.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
 }
 
 function drawResource(node) {
-  const { x: screenX, y: screenY } = isoToScreen(node.x, node.y);
+  const { x: screenX, y: screenY } = gridToScreen(node.x, node.y);
   ctx.fillStyle = resourcePalette[node.type];
   ctx.beginPath();
-  ctx.arc(screenX, screenY + 8, 10, 0, Math.PI * 2);
+  ctx.arc(screenX + TILE_SIZE / 2, screenY + TILE_SIZE / 2, 9, 0, Math.PI * 2);
   ctx.fill();
 }
 
 function drawStructure(structure) {
-  const { x: screenX, y: screenY } = isoToScreen(structure.x, structure.y);
+  const { x: screenX, y: screenY } = gridToScreen(structure.x, structure.y);
   ctx.fillStyle = "#d1a94b";
-  ctx.beginPath();
-  ctx.moveTo(screenX, screenY - 6);
-  ctx.lineTo(screenX + 12, screenY + 8);
-  ctx.lineTo(screenX, screenY + 20);
-  ctx.lineTo(screenX - 12, screenY + 8);
-  ctx.closePath();
-  ctx.fill();
+  ctx.fillRect(screenX + 6, screenY + 6, TILE_SIZE - 12, TILE_SIZE - 12);
 }
 
 function drawColonist(colonist) {
-  const { x: screenX, y: screenY } = isoToScreen(colonist.x, colonist.y);
+  const { x: screenX, y: screenY } = gridToScreen(colonist.x, colonist.y);
   ctx.fillStyle = "#f2c14e";
   ctx.beginPath();
-  ctx.arc(screenX, screenY - 4, 8, 0, Math.PI * 2);
+  ctx.arc(screenX + TILE_SIZE / 2, screenY + TILE_SIZE / 2, 7, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#1c1f2a";
   ctx.font = "10px Segoe UI";
-  ctx.fillText(colonist.name, screenX - 12, screenY - 14);
+  ctx.fillText(colonist.name, screenX - 4, screenY - 2);
 }
 
 function drawOrders() {
   for (const order of gameState.buildOrders) {
-    const { x: screenX, y: screenY } = isoToScreen(order.x, order.y);
+    const { x: screenX, y: screenY } = gridToScreen(order.x, order.y);
     ctx.strokeStyle = "#5fe1ff";
     ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.arc(screenX, screenY + 8, 12, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.strokeRect(screenX + 3, screenY + 3, TILE_SIZE - 6, TILE_SIZE - 6);
     ctx.setLineDash([]);
   }
 }
 
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (let layer = 0; layer < MAP_SIZE * 2; layer += 1) {
-    for (let x = 0; x < MAP_SIZE; x += 1) {
-      const y = layer - x;
-      if (y < 0 || y >= MAP_SIZE) continue;
+  for (let x = 0; x < MAP_SIZE; x += 1) {
+    for (let y = 0; y < MAP_SIZE; y += 1) {
       const tile = gameState.map[x][y];
       drawTile(x, y, terrainPalette[tile.terrain]);
     }
@@ -439,7 +421,7 @@ function init() {
   gameState.map = createMap();
   gameState.nodes = createResources();
   gameState.colonists = createColonists();
-  gameState.structures.push({ type: "camp", x: 11, y: 11 });
+  gameState.structures.push({ type: "camp", x: 14, y: 14 });
   pushEvent("Колония высадилась. Удачи!");
   loop();
 }
@@ -448,18 +430,24 @@ canvas.addEventListener("click", (event) => {
   const rect = canvas.getBoundingClientRect();
   const clickX = event.clientX - rect.left;
   const clickY = event.clientY - rect.top;
-  const tile = screenToIso(clickX, clickY);
+  const tile = screenToGrid(clickX, clickY);
   if (!canWalk(tile.x, tile.y)) return;
   const existing = gameState.buildOrders.find((order) => order.x === tile.x && order.y === tile.y);
   if (existing) return;
-  const cost = 10;
-  if (gameState.resources.wood < cost) {
-    pushEvent("Недостаточно дерева для лагеря (нужно 10)." );
+  if (gameState.selectedTab !== "build") {
+    pushEvent("Открой вкладку «Постройки», чтобы строить.");
     return;
   }
-  gameState.resources.wood -= cost;
-  gameState.buildOrders.push({ x: tile.x, y: tile.y, cost, progress: 0 });
-  pushEvent("Создан заказ на лагерь.");
+  if (gameState.selectedBuild === "camp") {
+    const cost = 10;
+    if (gameState.resources.wood < cost) {
+      pushEvent("Недостаточно дерева для лагеря (нужно 10)." );
+      return;
+    }
+    gameState.resources.wood -= cost;
+    gameState.buildOrders.push({ x: tile.x, y: tile.y, cost, progress: 0 });
+    pushEvent("Создан заказ на лагерь.");
+  }
 });
 
 speedButton.addEventListener("click", () => {
@@ -473,4 +461,59 @@ togglePauseButton.addEventListener("click", () => {
   togglePauseButton.textContent = gameState.paused ? "Продолжить" : "Пауза";
 });
 
+const tabs = document.querySelectorAll(".tab");
+const panels = document.querySelectorAll(".panel-section[data-panel]");
+const buildOptions = document.querySelectorAll(".build-option");
+const tasksList = document.getElementById("tasks");
+
+function setTab(nextTab) {
+  gameState.selectedTab = nextTab;
+  tabs.forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.tab === nextTab);
+    tab.setAttribute("aria-selected", tab.dataset.tab === nextTab ? "true" : "false");
+  });
+  panels.forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.panel !== nextTab);
+  });
+}
+
+tabs.forEach((tab) => {
+  tab.addEventListener("click", () => setTab(tab.dataset.tab));
+});
+
+buildOptions.forEach((option) => {
+  option.addEventListener("click", () => {
+    buildOptions.forEach((btn) => btn.classList.remove("active"));
+    option.classList.add("active");
+    gameState.selectedBuild = option.dataset.build;
+  });
+});
+
+function updateTasks() {
+  const tasks = [
+    {
+      title: "Закрепиться",
+      items: [
+        "Поставь лагерь через вкладку «Постройки».",
+        "Собери 20 дерева и 20 еды."
+      ]
+    },
+    {
+      title: "Стабилизировать быт",
+      items: [
+        "Следи, чтобы голод и отдых не падали ниже 30.",
+        "Переживи одно событие без потерь."
+      ]
+    }
+  ];
+  tasksList.innerHTML = tasks
+    .map(
+      (task) =>
+        `<li><strong>${task.title}</strong><ul>${task.items.map((item) => `<li>${item}</li>`).join("")}</ul></li>`
+    )
+    .join("");
+}
+
 init();
+setTab("overview");
+updateTasks();
